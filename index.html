@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070e18">
+<title>Jarvis</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#070e18;--bg2:#0c1726;--panel:#0f1d30;--line:#1d3350;
+  --ink:#e6f4ff;--mute:#8aa4bf;--cy:#46dcff;--cy2:#0aa6d6;--warn:#ffb347;--bad:#ff6b6b;--ok:#4ade80;
+}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(1200px 700px at 50% 20%,#0d2238 0%,var(--bg) 60%);color:var(--ink);
+  font:16px/1.5 Inter,system-ui,sans-serif;overflow-x:clip;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
+.app{max-width:900px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;padding:0 16px}
+header{display:flex;align-items:center;gap:12px;padding:14px 0}
+.brand{font-family:Rajdhani,sans-serif;font-weight:700;font-size:26px;letter-spacing:.12em;color:var(--cy)}
+.status{flex:1;color:var(--mute);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);display:grid;place-items:center}
+.ib svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
+.ib.on{border-color:var(--cy);color:var(--cy);box-shadow:0 0 14px #46dcff55}
+
+/* Orbe */
+.stage{display:grid;place-items:center;padding:8px 0 4px}
+.orb{position:relative;width:min(62vw,260px);aspect-ratio:1;border:0;background:none;padding:0;border-radius:50%}
+.orb i{position:absolute;inset:0;border-radius:50%;border:2px solid var(--cy);opacity:.55}
+.orb i:nth-child(1){inset:0;border-style:dashed;animation:spin 24s linear infinite}
+.orb i:nth-child(2){inset:12%;border-width:3px;opacity:.8;border-color:var(--cy) transparent var(--cy) transparent;animation:spin 9s linear infinite reverse}
+.orb i:nth-child(3){inset:26%;opacity:.5}
+.orb b{position:absolute;inset:36%;border-radius:50%;background:radial-gradient(circle,#e8fbff 0%,#7fe9ff 35%,#0aa6d6 70%,transparent 72%);
+  box-shadow:0 0 40px #46dcffaa,0 0 90px #46dcff55;transition:transform .25s}
+.orb[data-s=listening] b{animation:pulse 1s ease-in-out infinite}
+.orb[data-s=armed] b{animation:pulse .6s ease-in-out infinite;box-shadow:0 0 60px #fff,0 0 120px #46dcffcc}
+.orb[data-s=thinking] i:nth-child(2){animation-duration:1.4s}
+.orb[data-s=thinking] b{background:radial-gradient(circle,#fff6e0 0%,#ffd27f 40%,#e08a00 70%,transparent 72%);box-shadow:0 0 50px #ffb347aa}
+.orb[data-s=speaking] b{animation:talk .35s ease-in-out infinite alternate}
+.orb[data-s=off] b{filter:grayscale(.8) brightness(.6)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{50%{transform:scale(1.12)}}
+@keyframes talk{to{transform:scale(1.18)}}
+@media (prefers-reduced-motion:reduce){.orb *{animation:none!important}}
+.hint{font-family:Rajdhani,sans-serif;font-size:18px;color:var(--mute);text-align:center;margin:10px 0 0;min-height:27px}
+.heard{color:var(--ink)}
+
+/* Chat */
+.log{flex:1;display:flex;flex-direction:column;gap:10px;padding:16px 0;overflow-y:auto;min-height:160px}
+.msg{max-width:85%;padding:10px 14px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.u{align-self:flex-end;background:#12304d;border:1px solid #1f4c74}
+.msg.a{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+.msg.s{align-self:center;background:none;color:var(--mute);font-size:13px;padding:2px}
+.msg.e{align-self:center;color:var(--bad);font-size:14px;border:1px solid #ff6b6b55}
+.empty{color:var(--mute);text-align:center;font-size:15px;margin:auto 0}
+.empty b{color:var(--ink);font-weight:500}
+
+.bar{position:sticky;bottom:0;display:flex;gap:8px;padding:12px 0 16px;background:linear-gradient(transparent,var(--bg) 30%)}
+.bar input{flex:1;height:48px;border-radius:14px;border:1px solid var(--line);background:var(--bg2);padding:0 14px;font-size:16px}
+.mic{width:48px;height:48px;border-radius:14px;border:0;background:var(--cy);color:#04202c;display:grid;place-items:center}
+.mic svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2}
+.mic.rec{background:var(--warn)}
+
+/* Panel lateral */
+.drawer{position:fixed;inset:0;background:#000a;display:none;z-index:10}
+.drawer.open{display:block}
+.sheet{position:absolute;right:0;top:0;bottom:0;width:min(480px,100%);background:var(--bg2);border-left:1px solid var(--line);display:flex;flex-direction:column}
+.tabs{display:flex;gap:4px;padding:12px;border-bottom:1px solid var(--line);align-items:center}
+.tab{flex:1;height:44px;border-radius:10px;border:1px solid transparent;background:none;color:var(--mute);font-family:Rajdhani,sans-serif;font-weight:600;font-size:17px}
+.tab.on{background:var(--panel);border-color:var(--line);color:var(--cy)}
+.pane{flex:1;overflow-y:auto;padding:16px;display:none}
+.pane.on{display:block}
+h2{font-family:Rajdhani,sans-serif;font-size:22px;margin:0 0 12px;font-weight:600}
+h3{font-size:15px;margin:18px 0 6px;color:var(--mute);font-weight:500}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.card .t{display:flex;gap:8px;align-items:flex-start}
+.card .t strong{flex:1;font-weight:600}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute);white-space:nowrap}
+.tag.activo{color:var(--cy);border-color:#46dcff66}.tag.pausado{color:var(--warn);border-color:#ffb34766}.tag.terminado{color:var(--ok);border-color:#4ade8066}
+.meter{height:6px;background:#0a1422;border-radius:9px;margin:10px 0 6px;overflow:hidden}
+.meter span{display:block;height:100%;background:var(--cy)}
+.small{font-size:13px;color:var(--mute)}
+.tasks{margin:6px 0 0;padding-left:18px;font-size:14px}
+.tasks li.done{text-decoration:line-through;color:var(--mute)}
+.x{border:0;background:none;color:var(--mute);width:32px;height:32px;border-radius:8px}
+.x:hover{color:var(--bad)}
+label{display:block;font-size:14px;color:var(--mute);margin:14px 0 6px}
+.f{width:100%;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--bg);padding:0 12px;font-size:16px}
+textarea.f{height:90px;padding:10px 12px;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.btn{height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
+.btn.p{background:var(--cy);color:#04202c;border-color:var(--cy);font-weight:600}
+.chk{display:flex;align-items:center;gap:10px;margin-top:14px;color:var(--ink);font-size:15px}
+.chk input{width:22px;height:22px;accent-color:var(--cy)}
+.note{font-size:13px;color:var(--mute);margin-top:6px}
+a{color:var(--cy)}
+@media(max-width:600px){.msg{max-width:92%}.brand{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">JARVIS</div>
+    <div class="status" id="status">Iniciando…</div>
+    <button class="ib" id="wakeBtn" title="Escucha continua (palabra de activación)" aria-label="Escucha continua">
+      <svg viewBox="0 0 24 24"><path d="M2 12h2M6 8v8M10 5v14M14 8v8M18 10v4M22 12h-2"/></svg>
+    </button>
+    <button class="ib" id="menuBtn" aria-label="Proyectos, notas y ajustes">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+  </header>
+
+  <div class="stage">
+    <button class="orb" id="orb" data-s="off" aria-label="Tocar para hablar"><i></i><i></i><i></i><b></b></button>
+    <p class="hint" id="hint">Toca el orbe o di «Jarvis»</p>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <form class="bar" id="form">
+    <input id="txt" placeholder="Escribe o habla…" autocomplete="off" aria-label="Mensaje">
+    <button class="mic" id="micBtn" type="button" aria-label="Hablar">
+      <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+  </form>
+</div>
+
+<div class="drawer" id="drawer">
+  <div class="sheet">
+    <div class="tabs">
+      <button class="tab on" data-p="pProy">Proyectos</button>
+      <button class="tab" data-p="pNotas">Notas</button>
+      <button class="tab" data-p="pAj">Ajustes</button>
+      <button class="x" id="closeBtn" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="pane on" id="pProy">
+      <h2>Proyectos</h2>
+      <div id="proyList"></div>
+      <h3>Nuevo proyecto</h3>
+      <input class="f" id="npNombre" placeholder="Nombre del proyecto">
+      <div class="row"><button class="btn p" id="npAdd">Crear</button></div>
+    </div>
+
+    <div class="pane" id="pNotas">
+      <h2>Notas</h2>
+      <div id="notaList"></div>
+    </div>
+
+    <div class="pane" id="pAj">
+      <h2>Ajustes</h2>
+      <label for="apiKey">API key de Anthropic</label>
+      <input class="f" id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off">
+      <p class="note">Se guarda solo en este dispositivo. Sin key, Jarvis funciona con comandos fijos. Obtenla en <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
+
+      <label for="model">Modelo</label>
+      <select class="f" id="model">
+        <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (equilibrado)</option>
+        <option value="claude-haiku-5-5">Claude Haiku 5.5 (rápido y barato)</option>
+        <option value="claude-opus-5-5">Claude Opus 5.5 (máxima capacidad)</option>
+      </select>
+
+      <label for="about">Sobre ti (contexto para Jarvis)</label>
+      <textarea class="f" id="about" placeholder="Ej: Soy Pablo, Jefe de Operaciones…"></textarea>
+
+      <label for="wake">Palabra de activación</label>
+      <input class="f" id="wake" placeholder="jarvis">
+
+      <label for="voice">Voz</label>
+      <select class="f" id="voice"></select>
+      <label for="rate">Velocidad de voz: <span id="rateV">1.0</span></label>
+      <input id="rate" type="range" min="0.7" max="1.5" step="0.1" style="width:100%">
+
+      <label class="chk"><input type="checkbox" id="mute"> Silenciar respuestas habladas</label>
+      <label class="chk"><input type="checkbox" id="autoWake"> Activar escucha continua al abrir</label>
+
+      <div class="row">
+        <button class="btn p" id="saveCfg">Guardar</button>
+        <button class="btn" id="testVoice">Probar voz</button>
+      </div>
+
+      <h3>Respaldo</h3>
+      <div class="row">
+        <button class="btn" id="expBtn">Exportar datos</button>
+        <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
+        <button class="btn" id="clrChat">Borrar conversación</button>
+      </div>
+      <p class="note" id="ver">Jarvis v1.0 · Fase 1</p>
+    </div>
+  </div>
+</div>
+
+<script>
+{
+/* ================= Utilidades ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[¿?¡!.,;:]/g,'').trim();
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+
+/* ================= Almacenamiento (IndexedDB) ================= */
+let db;
+function openDB(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('jarvis', 1);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      ['proyectos','notas','kv'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+const tx = (store, mode='readonly') => db.transaction(store, mode).objectStore(store);
+const dbAll = store => new Promise(r => { const q = tx(store).getAll(); q.onsuccess = () => r(q.result || []); q.onerror = () => r([]); });
+const dbPut = (store, v) => new Promise(r => { const q = tx(store,'readwrite').put(v); q.onsuccess = () => r(v); q.onerror = () => r(null); });
+const dbDel = (store, id) => new Promise(r => { const q = tx(store,'readwrite').delete(id); q.onsuccess = q.onerror = () => r(); });
+const kvGet = async (k, d) => { const q = tx('kv').get(k); return new Promise(r => { q.onsuccess = () => r(q.result ? q.result.v : d); q.onerror = () => r(d); }); };
+const kvSet = (k, v) => dbPut('kv', {id:k, v});
+
+/* ================= Configuración ================= */
+const cfg = {apiKey:'', model:'claude-sonnet-5-5', about:'', wake:'jarvis', voice:'', rate:1, mute:false, autoWake:false};
+async function loadCfg(){ Object.assign(cfg, await kvGet('cfg', {})); }
+function fillCfg(){
+  $('apiKey').value = cfg.apiKey; $('model').value = cfg.model; $('about').value = cfg.about;
+  $('wake').value = cfg.wake; $('rate').value = cfg.rate; $('rateV').textContent = (+cfg.rate).toFixed(1);
+  $('mute').checked = cfg.mute; $('autoWake').checked = cfg.autoWake;
+}
+
+/* ================= UI ================= */
+const orb = $('orb'), hint = $('hint'), log = $('log');
+function setState(s, text){
+  orb.dataset.s = s;
+  const labels = {off:'En reposo', idle:'En reposo', listening:`Escuchando «${cfg.wake}»…`, armed:'Te escucho…', thinking:'Pensando…', speaking:'Hablando…'};
+  $('status').textContent = labels[s] || s;
+  if (text !== undefined) hint.textContent = text;
+}
+function addMsg(role, text){
+  const e = log.querySelector('.empty'); if (e) e.remove();
+  const d = document.createElement('div');
+  d.className = 'msg ' + role; d.textContent = text;
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+  return d;
+}
+function emptyLog(){
+  log.innerHTML = `<div class="empty">Prueba: <b>«Jarvis, crea un proyecto llamado Quincho»</b><br><b>«Anota que mañana reviso los empalmes»</b> · <b>«¿Qué proyectos tengo?»</b></div>`;
+}
+
+/* ================= Voz: salida (TTS) ================= */
+let voices = [];
+function loadVoices(){
+  voices = speechSynthesis.getVoices().filter(v => v.lang.toLowerCase().startsWith('es'));
+  $('voice').innerHTML = '<option value="">Automática (español)</option>' +
+    voices.map(v => `<option value="${esc(v.name)}">${esc(v.name)} · ${esc(v.lang)}</option>`).join('');
+  $('voice').value = cfg.voice;
+}
+if ('speechSynthesis' in window){ loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+
+const clean = t => String(t).replace(/```[\s\S]*?```/g,' (código en pantalla) ').replace(/[*_#`>|]/g,'').replace(/\[(.*?)\]\(.*?\)/g,'$1').replace(/\s+/g,' ').trim();
+let speaking = false;
+function speak(text){
+  return new Promise(res => {
+    if (cfg.mute || !('speechSynthesis' in window) || !text){ res(); return; }
+    pauseRec();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean(text));
+    const v = voices.find(v => v.name === cfg.voice) || voices.find(v => /es[-_](CL|419|MX|US)/i.test(v.lang)) || voices[0];
+    if (v){ u.voice = v; u.lang = v.lang; } else u.lang = 'es-CL';
+    u.rate = +cfg.rate || 1;
+    speaking = true; setState('speaking');
+    const done = () => { speaking = false; setState(wakeOn ? 'listening' : 'idle'); resumeRec(); res(); };
+    u.onend = done; u.onerror = done;
+    speechSynthesis.speak(u);
+  });
+}
+function stopSpeaking(){ if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+
+/* ================= Voz: entrada (reconocimiento) ================= */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, wakeOn = false, armed = false, armTimer = null, recRunning = false, paused = false, busy = false;
+
+function wakeVariants(){
+  const w = norm(cfg.wake || 'jarvis');
+  return w === 'jarvis' ? ['jarvis','yarvis','jarbis','harvis','jarvi','yarbis','charvis'] : [w];
+}
+function findWake(t){
+  for (const w of wakeVariants()){ const i = t.indexOf(w); if (i >= 0) return {i, len:w.length}; }
+  return null;
+}
+function arm(){
+  armed = true; setState('armed', 'Te escucho…');
+  clearTimeout(armTimer);
+  armTimer = setTimeout(() => { armed = false; if (!busy && !speaking) setState(wakeOn ? 'listening' : 'idle', wakeOn ? `Di «${cfg.wake}» cuando me necesites` : 'Toca el orbe para hablar'); if (!wakeOn) stopRec(); }, 8000);
+}
+function initRec(){
+  if (!SR) return;
+  rec = new SR();
+  rec.lang = 'es-CL'; rec.continuous = true; rec.interimResults = true;
+  rec.onstart = () => { recRunning = true; };
+  rec.onresult = e => {
+    let finalTxt = '', interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++){
+      const r = e.results[i];
+      if (r.isFinal) finalTxt += r[0].transcript; else interim += r[0].transcript;
+    }
+    if (interim && (armed || findWake(norm(interim)))) hint.innerHTML = `<span class="heard">${esc(interim)}</span>`;
+    if (!finalTxt || busy || speaking) return;
+    const raw = finalTxt.trim(), n = norm(raw);
+    const w = findWake(n);
+    if (w){
+      // texto original después de la palabra de activación
+      const words = raw.split(/\s+/); let acc = '', k = 0;
+      for (; k < words.length; k++){ acc += (acc ? ' ' : '') + norm(words[k]); if (acc.length >= w.i + w.len) break; }
+      const cmd = words.slice(k + 1).join(' ').replace(/^[,.\s]+/, '');
+      if (cmd.length > 1){ armed = false; clearTimeout(armTimer); handle(cmd); }
+      else arm();
+    } else if (armed){
+      armed = false; clearTimeout(armTimer); handle(raw);
+    }
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      wakeOn = false; updateWakeBtn();
+      addMsg('e', 'No tengo permiso para usar el micrófono. Actívalo en la configuración del navegador para este sitio.');
+    }
+  };
+  rec.onend = () => {
+    recRunning = false;
+    if ((wakeOn || armed) && !paused) setTimeout(startRec, 250);
+  };
+}
+function startRec(){ if (!rec || recRunning || paused) return; try { rec.start(); } catch(_){} }
+function stopRec(){ if (rec && recRunning){ try { rec.stop(); } catch(_){} } }
+function pauseRec(){ paused = true; stopRec(); }
+function resumeRec(){ paused = false; if (wakeOn) startRec(); }
+
+function updateWakeBtn(){
+  $('wakeBtn').classList.toggle('on', wakeOn);
+  if (!busy && !speaking) setState(wakeOn ? 'listening' : 'idle', wakeOn ? `Di «${cfg.wake}» cuando me necesites` : 'Toca el orbe o activa la escucha continua');
+}
+function toggleWake(force){
+  if (!SR){ addMsg('e', 'Este navegador no tiene reconocimiento de voz. Usa Chrome o Edge.'); return; }
+  wakeOn = force ?? !wakeOn; updateWakeBtn();
+  if (wakeOn) startRec(); else { armed = false; stopRec(); }
+}
+function pushToTalk(){
+  if (speaking){ stopSpeaking(); return; }
+  if (!SR){ addMsg('e', 'Este navegador no tiene reconocimiento de voz. Usa Chrome o Edge, o escribe abajo.'); return; }
+  paused = false; arm(); startRec();
+}
+
+/* ================= Proyectos y notas ================= */
+async function findProject(q){
+  const all = await dbAll('proyectos'); const n = norm(q || '');
+  return all.find(p => p.id === q) || all.find(p => norm(p.nombre) === n) || all.find(p => norm(p.nombre).includes(n) || n.includes(norm(p.nombre)));
+}
+const actions = {
+  async crear_proyecto({nombre, descripcion = '', fecha_objetivo = ''}){
+    if (!nombre) return {error:'Falta el nombre'};
+    const p = {id:uid(), nombre, descripcion, fecha_objetivo, estado:'activo', avance:0, tareas:[], bitacora:[], creado:new Date().toISOString()};
+    await dbPut('proyectos', p); renderProyectos();
+    return {ok:true, proyecto:p};
+  },
+  async listar_proyectos(){
+    const all = await dbAll('proyectos');
+    return {proyectos: all.map(p => ({nombre:p.nombre, estado:p.estado, avance:p.avance, fecha_objetivo:p.fecha_objetivo, tareas_pendientes:p.tareas.filter(t => !t.hecha).map(t => t.texto)}))};
+  },
+  async actualizar_proyecto({proyecto, estado, avance, agregar_tarea, completar_tarea, comentario}){
+    const p = await findProject(proyecto);
+    if (!p) return {error:`No encontré el proyecto "${proyecto}"`};
+    if (estado) p.estado = estado;
+    if (avance !== undefined && avance !== null) p.avance = Math.max(0, Math.min(100, Math.round(+avance)));
+    if (agregar_tarea) p.tareas.push({id:uid(), texto:agregar_tarea, hecha:false});
+    if (completar_tarea){ const t = p.tareas.find(t => norm(t.texto).includes(norm(completar_tarea))); if (t) t.hecha = true; }
+    if (comentario) p.bitacora.push({fecha:new Date().toISOString(), texto:comentario});
+    await dbPut('proyectos', p); renderProyectos();
+    return {ok:true, proyecto:{nombre:p.nombre, estado:p.estado, avance:p.avance, tareas:p.tareas}};
+  },
+  async crear_nota({texto, etiqueta = ''}){
+    if (!texto) return {error:'Falta el texto'};
+    const n = {id:uid(), texto, etiqueta, fecha:new Date().toISOString()};
+    await dbPut('notas', n); renderNotas();
+    return {ok:true};
+  },
+  async listar_notas({limite = 10} = {}){
+    const all = (await dbAll('notas')).sort((a,b) => b.fecha.localeCompare(a.fecha)).slice(0, limite);
+    return {notas: all.map(n => ({texto:n.texto, etiqueta:n.etiqueta, fecha:n.fecha.slice(0,10)}))};
+  }
+};
+const tools = [
+  {name:'crear_proyecto', description:'Crea un nuevo proyecto del usuario.', input_schema:{type:'object', properties:{nombre:{type:'string'}, descripcion:{type:'string'}, fecha_objetivo:{type:'string', description:'AAAA-MM-DD si el usuario la menciona'}}, required:['nombre']}},
+  {name:'listar_proyectos', description:'Lista los proyectos con estado, avance y tareas pendientes.', input_schema:{type:'object', properties:{}}},
+  {name:'actualizar_proyecto', description:'Actualiza un proyecto existente: estado, % de avance, agregar o completar tareas, o dejar un comentario en su bitácora.', input_schema:{type:'object', properties:{proyecto:{type:'string', description:'Nombre del proyecto'}, estado:{type:'string', enum:['activo','pausado','terminado']}, avance:{type:'number', description:'0 a 100'}, agregar_tarea:{type:'string'}, completar_tarea:{type:'string'}, comentario:{type:'string'}}, required:['proyecto']}},
+  {name:'crear_nota', description:'Guarda una nota o recordatorio del usuario.', input_schema:{type:'object', properties:{texto:{type:'string'}, etiqueta:{type:'string'}}, required:['texto']}},
+  {name:'listar_notas', description:'Lee las notas más recientes.', input_schema:{type:'object', properties:{limite:{type:'number'}}}}
+];
+
+async function renderProyectos(){
+  const all = (await dbAll('proyectos')).sort((a,b) => b.creado.localeCompare(a.creado));
+  $('proyList').innerHTML = all.length ? all.map(p => `
+    <div class="card">
+      <div class="t"><strong>${esc(p.nombre)}</strong><span class="tag ${esc(p.estado)}">${esc(p.estado)}</span><button class="x" data-delp="${esc(p.id)}" aria-label="Eliminar">✕</button></div>
+      ${p.descripcion ? `<div class="small">${esc(p.descripcion)}</div>` : ''}
+      <div class="meter"><span style="width:${+p.avance || 0}%"></span></div>
+      <div class="small">${+p.avance || 0}% de avance${p.fecha_objetivo ? ' · objetivo ' + esc(p.fecha_objetivo) : ''}</div>
+      ${p.tareas.length ? `<ul class="tasks">${p.tareas.map(t => `<li class="${t.hecha ? 'done' : ''}">${esc(t.texto)}</li>`).join('')}</ul>` : ''}
+    </div>`).join('') : '<p class="small">Aún no hay proyectos. Dile a Jarvis «crea un proyecto…».</p>';
+}
+async function renderNotas(){
+  const all = (await dbAll('notas')).sort((a,b) => b.fecha.localeCompare(a.fecha));
+  $('notaList').innerHTML = all.length ? all.map(n => `
+    <div class="card"><div class="t"><strong style="font-weight:400">${esc(n.texto)}</strong><button class="x" data-deln="${esc(n.id)}" aria-label="Eliminar">✕</button></div>
+    <div class="small">${esc(new Date(n.fecha).toLocaleString('es-CL'))}${n.etiqueta ? ' · ' + esc(n.etiqueta) : ''}</div></div>`).join('')
+    : '<p class="small">Sin notas. Di «Jarvis, anota que…».</p>';
+}
+
+/* ================= Cerebro: Claude ================= */
+let history = [];
+function systemPrompt(){
+  const now = new Date();
+  return `Eres Jarvis, el asistente personal por voz del usuario. Responde siempre en español de Chile, breve y natural, porque tu respuesta se lee en voz alta: máximo 2 a 3 frases salvo que te pidan detalle. No uses markdown, listas con símbolos ni emojis.
+Fecha y hora actual: ${now.toLocaleString('es-CL', {dateStyle:'full', timeStyle:'short'})}.
+Tienes herramientas para gestionar proyectos y notas guardados en el dispositivo; úsalas cuando el usuario pida crear, actualizar, anotar o consultar. Confirma en una frase lo que hiciste.
+${cfg.about ? 'Contexto del usuario: ' + cfg.about : ''}`;
+}
+function trimHistory(){
+  while (history.length > 24) history.shift();
+  while (history.length && !(history[0].role === 'user' && typeof history[0].content === 'string')) history.shift();
+}
+async function askClaude(text){
+  history.push({role:'user', content:text});
+  for (let step = 0; step < 6; step++){
+    trimHistory();
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'content-type':'application/json', 'x-api-key':cfg.apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:cfg.model, max_tokens:1024, system:systemPrompt(), tools, messages:history})
+    });
+    if (!r.ok){
+      history.pop();
+      const body = await r.text().catch(() => '');
+      if (r.status === 401) throw new Error('La API key no es válida. Revísala en Ajustes.');
+      if (r.status === 429) throw new Error('Límite de uso alcanzado. Espera un momento.');
+      if (r.status === 404) throw new Error('El modelo seleccionado no está disponible. Cambia el modelo en Ajustes.');
+      if (r.status === 400 && /credit/i.test(body)) throw new Error('Tu cuenta de Anthropic no tiene saldo. Carga créditos en console.anthropic.com.');
+      throw new Error(`Error ${r.status} al conectar con Claude.`);
+    }
+    const data = await r.json();
+    history.push({role:'assistant', content:data.content});
+    const uses = data.content.filter(c => c.type === 'tool_use');
+    if (data.stop_reason !== 'tool_use' || !uses.length){
+      return data.content.filter(c => c.type === 'text').map(c => c.text).join(' ').trim();
+    }
+    const results = [];
+    for (const u of uses){
+      let out;
+      try { out = await (actions[u.name] ? actions[u.name](u.input || {}) : {error:'Herramienta desconocida'}); }
+      catch(err){ out = {error:String(err)}; }
+      addMsg('s', '⚙ ' + u.name.replace(/_/g,' '));
+      results.push({type:'tool_result', tool_use_id:u.id, content:JSON.stringify(out)});
+    }
+    history.push({role:'user', content:results});
+  }
+  return 'Hice varias acciones, revisa el panel de proyectos.';
+}
+
+/* ================= Comandos fijos (sin API key) ================= */
+async function localCommand(t){
+  const n = norm(t); let m;
+  if (/\b(que hora|la hora)\b/.test(n)) return 'Son las ' + new Date().toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'}) + '.';
+  if (/\b(que dia|fecha|que fecha)\b/.test(n)) return 'Hoy es ' + new Date().toLocaleDateString('es-CL', {dateStyle:'full'}) + '.';
+  if ((m = t.match(/(?:crea|crear|nuevo|abre|abrir)\s+(?:un\s+)?(?:nuevo\s+)?proyecto\s+(?:llamado\s+|de\s+)?(.+)/i))){
+    await actions.crear_proyecto({nombre:m[1].trim().replace(/[.]$/,'')}); return `Listo, creé el proyecto ${m[1].trim()}.`;
+  }
+  if ((m = t.match(/(?:avance|progreso)\s+(?:del?\s+)?(?:proyecto\s+)?(.+?)\s+(?:al|en|a)\s+(\d{1,3})/i))){
+    const r = await actions.actualizar_proyecto({proyecto:m[1], avance:+m[2]});
+    return r.error || `Actualicé ${r.proyecto.nombre} al ${r.proyecto.avance} por ciento.`;
+  }
+  if (/proyectos/.test(n)){
+    const {proyectos} = await actions.listar_proyectos();
+    return proyectos.length ? (proyectos.length === 1 ? "Tienes 1 proyecto: " : `Tienes ${proyectos.length} proyectos: `) + proyectos.map(p => `${p.nombre}, ${p.avance} por ciento`).join('; ') + '.' : 'Aún no tienes proyectos.';
+  }
+  if ((m = t.match(/(?:anota|apunta|nota|recuerdame|recuerda)\s+(?:que\s+)?(.+)/i))){
+    await actions.crear_nota({texto:m[1].trim()}); return 'Anotado.';
+  }
+  if (/\bnotas\b/.test(n)){
+    const {notas} = await actions.listar_notas({limite:5});
+    return notas.length ? 'Tus últimas notas: ' + notas.map(x => x.texto).join('. ') + '.' : 'No tienes notas.';
+  }
+  if (/\b(hola|buenas|buenos dias|buenas tardes|buenas noches)\b/.test(n)) return 'Hola. ¿En qué te ayudo?';
+  return 'Para conversar libremente necesito tu API key de Anthropic en Ajustes. Mientras tanto puedo crear proyectos, anotar, darte la hora y listar tus proyectos o notas.';
+}
+
+/* ================= Flujo principal ================= */
+async function handle(text){
+  text = String(text).trim(); if (!text || busy) return;
+  const n = norm(text);
+  if (/^(silencio|para|detente|calla|callate|stop)$/.test(n)){ stopSpeaking(); return; }
+  if (!wakeOn) stopRec();
+  busy = true; addMsg('u', text); setState('thinking', 'Pensando…');
+  let reply;
+  try { reply = cfg.apiKey ? await askClaude(text) : await localCommand(text); }
+  catch(err){
+    const msg = err.message && !/fetch/i.test(err.message) ? err.message : 'No pude conectar con Claude. Revisa tu conexión a internet.';
+    addMsg('e', msg); busy = false;
+    setState(wakeOn ? 'listening' : 'idle', 'Algo falló'); await speak(msg); return;
+  }
+  busy = false;
+  if (reply){ addMsg('a', reply); hint.textContent = ''; await speak(reply); }
+  if (!speaking) setState(wakeOn ? 'listening' : 'idle', wakeOn ? `Di «${cfg.wake}» cuando me necesites` : 'Toca el orbe para hablar');
+  kvSet('chatlog', [...log.querySelectorAll('.msg.u,.msg.a')].slice(-40).map(d => ({r:d.classList.contains('u') ? 'u' : 'a', t:d.textContent})));
+}
+
+/* ================= Eventos ================= */
+$('form').addEventListener('submit', e => { e.preventDefault(); const v = $('txt').value; $('txt').value = ''; handle(v); });
+orb.addEventListener('click', pushToTalk);
+$('micBtn').addEventListener('click', pushToTalk);
+$('wakeBtn').addEventListener('click', () => toggleWake());
+$('menuBtn').addEventListener('click', () => { $('drawer').classList.add('open'); renderProyectos(); renderNotas(); });
+$('closeBtn').addEventListener('click', () => $('drawer').classList.remove('open'));
+$('drawer').addEventListener('click', e => { if (e.target.id === 'drawer') $('drawer').classList.remove('open'); });
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === b.dataset.p));
+}));
+$('proyList').addEventListener('click', async e => { const id = e.target.dataset.delp; if (id){ await dbDel('proyectos', id); renderProyectos(); } });
+$('notaList').addEventListener('click', async e => { const id = e.target.dataset.deln; if (id){ await dbDel('notas', id); renderNotas(); } });
+$('npAdd').addEventListener('click', async () => { const v = $('npNombre').value.trim(); if (v){ await actions.crear_proyecto({nombre:v}); $('npNombre').value = ''; } });
+$('rate').addEventListener('input', e => $('rateV').textContent = (+e.target.value).toFixed(1));
+$('saveCfg').addEventListener('click', async () => {
+  Object.assign(cfg, {apiKey:$('apiKey').value.trim(), model:$('model').value, about:$('about').value.trim(),
+    wake:$('wake').value.trim() || 'jarvis', voice:$('voice').value, rate:+$('rate').value, mute:$('mute').checked, autoWake:$('autoWake').checked});
+  await kvSet('cfg', cfg);
+  $('saveCfg').textContent = 'Guardado ✓'; setTimeout(() => $('saveCfg').textContent = 'Guardar', 1500);
+  updateWakeBtn();
+});
+$('testVoice').addEventListener('click', () => { cfg.voice = $('voice').value; cfg.rate = +$('rate').value; const m = cfg.mute; cfg.mute = false; speak('Hola, soy Jarvis. Sistemas en línea.').then(() => cfg.mute = m); });
+$('clrChat').addEventListener('click', async () => { history = []; await kvSet('chatlog', []); emptyLog(); });
+$('expBtn').addEventListener('click', async () => {
+  const data = {version:1, exportado:new Date().toISOString(), proyectos:await dbAll('proyectos'), notas:await dbAll('notas')};
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type:'application/json'}));
+  a.download = `jarvis-respaldo-${new Date().toISOString().slice(0,10)}.json`; a.click();
+});
+$('impFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    for (const p of data.proyectos || []) await dbPut('proyectos', p);
+    for (const n of data.notas || []) await dbPut('notas', n);
+    renderProyectos(); renderNotas(); addMsg('s', 'Respaldo importado.');
+  } catch(_){ addMsg('e', 'El archivo no es un respaldo válido de Jarvis.'); }
+  e.target.value = '';
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('drawer').classList.remove('open'); });
+
+/* ================= Inicio ================= */
+(async () => {
+  try { db = await openDB(); } catch(_){ addMsg('e', 'No pude abrir el almacenamiento local de este navegador.'); return; }
+  await loadCfg(); fillCfg(); if ('speechSynthesis' in window) loadVoices();
+  const saved = await kvGet('chatlog', []);
+  if (saved.length) saved.forEach(m => addMsg(m.r, m.t)); else emptyLog();
+  initRec();
+  if (!SR) addMsg('s', 'Este navegador no reconoce voz. Usa Chrome o Edge para hablar con Jarvis.');
+  if (!cfg.apiKey) addMsg('s', 'Modo básico: agrega tu API key en ☰ › Ajustes para conversar libremente.');
+  if (cfg.autoWake && SR) toggleWake(true); else updateWakeBtn();
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+}
+</script>
+</body>
+</html>
+
+{
+  "name": "Jarvis",
+  "short_name": "Jarvis",
+  "description": "Asistente personal por voz: proyectos, notas y conversación con Claude.",
+  "lang": "es-CL",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070e18",
+  "theme_color": "#070e18",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
+
+// Jarvis — service worker: deja la app disponible sin conexión.
+const CACHE = 'jarvis-v1';
+const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return; // la API de Claude va directo a la red
+  // Red primero (para recibir actualizaciones), caché si no hay conexión
+  e.respondWith(
+    fetch(e.request).then(r => {
+      const copy = r.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copy));
+      return r;
+    }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
+  );
+});// Jarvis — service worker: deja la app disponible sin conexión.
+const CACHE = 'jarvis-v1';
+const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return; // la API de Claude va directo a la red
+  // Red primero (para recibir actualizaciones), caché si no hay conexión
+  e.respondWith(
+    fetch(e.request).then(r => {
+      const copy = r.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copy));
+      return r;
+    }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
+  );
+});
+
