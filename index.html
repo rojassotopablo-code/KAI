@@ -1,10 +1,36 @@
+// KAI — service worker: deja la app disponible sin conexión.
+const CACHE = 'kai-v2';
+const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return; // la API de Claude va directo a la red
+  // Red primero (para recibir actualizaciones), caché si no hay conexión
+  e.respondWith(
+    fetch(e.request).then(r => {
+      const copy = r.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copy));
+      return r;
+    }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
+  );
+});
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#070e18">
-<title>Jarvis</title>
+<title>KAI</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -29,6 +55,7 @@ header{display:flex;align-items:center;gap:12px;padding:14px 0}
 .status{flex:1;color:var(--mute);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ib{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);display:grid;place-items:center}
 .ib svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
+.ib.inst{background:var(--cy);color:#04202c;border-color:var(--cy)}
 .ib.on{border-color:var(--cy);color:var(--cy);box-shadow:0 0 14px #46dcff55}
 
 /* Orbe */
@@ -108,8 +135,11 @@ a{color:var(--cy)}
 <body>
 <div class="app">
   <header>
-    <div class="brand">JARVIS</div>
+    <div class="brand">KAI</div>
     <div class="status" id="status">Iniciando…</div>
+    <button class="ib inst" id="instBtn" hidden aria-label="Instalar KAI">
+      <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+    </button>
     <button class="ib" id="wakeBtn" title="Escucha continua (palabra de activación)" aria-label="Escucha continua">
       <svg viewBox="0 0 24 24"><path d="M2 12h2M6 8v8M10 5v14M14 8v8M18 10v4M22 12h-2"/></svg>
     </button>
@@ -120,7 +150,7 @@ a{color:var(--cy)}
 
   <div class="stage">
     <button class="orb" id="orb" data-s="off" aria-label="Tocar para hablar"><i></i><i></i><i></i><b></b></button>
-    <p class="hint" id="hint">Toca el orbe o di «Jarvis»</p>
+    <p class="hint" id="hint">Toca el orbe o di «KAI»</p>
   </div>
 
   <div class="log" id="log"></div>
@@ -159,7 +189,7 @@ a{color:var(--cy)}
       <h2>Ajustes</h2>
       <label for="apiKey">API key de Anthropic</label>
       <input class="f" id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off">
-      <p class="note">Se guarda solo en este dispositivo. Sin key, Jarvis funciona con comandos fijos. Obtenla en <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
+      <p class="note">Se guarda solo en este dispositivo. Sin key, KAI funciona con comandos fijos. Obtenla en <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
 
       <label for="model">Modelo</label>
       <select class="f" id="model">
@@ -168,11 +198,11 @@ a{color:var(--cy)}
         <option value="claude-opus-5-5">Claude Opus 5.5 (máxima capacidad)</option>
       </select>
 
-      <label for="about">Sobre ti (contexto para Jarvis)</label>
+      <label for="about">Sobre ti (contexto para KAI)</label>
       <textarea class="f" id="about" placeholder="Ej: Soy Pablo, Jefe de Operaciones…"></textarea>
 
       <label for="wake">Palabra de activación</label>
-      <input class="f" id="wake" placeholder="jarvis">
+      <input class="f" id="wake" placeholder="kai">
 
       <label for="voice">Voz</label>
       <select class="f" id="voice"></select>
@@ -193,7 +223,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">Jarvis v1.0 · Fase 1</p>
+      <p class="note" id="ver">KAI v1.1 · Fase 1</p>
     </div>
   </div>
 </div>
@@ -227,8 +257,8 @@ const kvGet = async (k, d) => { const q = tx('kv').get(k); return new Promise(r 
 const kvSet = (k, v) => dbPut('kv', {id:k, v});
 
 /* ================= Configuración ================= */
-const cfg = {apiKey:'', model:'claude-sonnet-5-5', about:'', wake:'jarvis', voice:'', rate:1, mute:false, autoWake:false};
-async function loadCfg(){ Object.assign(cfg, await kvGet('cfg', {})); }
+const cfg = {apiKey:'', model:'claude-sonnet-5-5', about:'', wake:'kai', voice:'', rate:1, mute:false, autoWake:false};
+async function loadCfg(){ Object.assign(cfg, await kvGet('cfg', {})); if (norm(cfg.wake) === 'jarvis') cfg.wake = 'kai'; }
 function fillCfg(){
   $('apiKey').value = cfg.apiKey; $('model').value = cfg.model; $('about').value = cfg.about;
   $('wake').value = cfg.wake; $('rate').value = cfg.rate; $('rateV').textContent = (+cfg.rate).toFixed(1);
@@ -251,7 +281,7 @@ function addMsg(role, text){
   return d;
 }
 function emptyLog(){
-  log.innerHTML = `<div class="empty">Prueba: <b>«Jarvis, crea un proyecto llamado Quincho»</b><br><b>«Anota que mañana reviso los empalmes»</b> · <b>«¿Qué proyectos tengo?»</b></div>`;
+  log.innerHTML = `<div class="empty">Prueba: <b>«KAI, crea un proyecto llamado Quincho»</b><br><b>«Anota que mañana reviso los empalmes»</b> · <b>«¿Qué proyectos tengo?»</b></div>`;
 }
 
 /* ================= Voz: salida (TTS) ================= */
@@ -288,8 +318,8 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, wakeOn = false, armed = false, armTimer = null, recRunning = false, paused = false, busy = false;
 
 function wakeVariants(){
-  const w = norm(cfg.wake || 'jarvis');
-  return w === 'jarvis' ? ['jarvis','yarvis','jarbis','harvis','jarvi','yarbis','charvis'] : [w];
+  const w = norm(cfg.wake || 'kai');
+  return w === 'kai' ? ['kai','kay','cai','cay','kail','kaii','okay kai'] : [w];
 }
 function findWake(t){
   for (const w of wakeVariants()){ const i = t.indexOf(w); if (i >= 0) return {i, len:w.length}; }
@@ -412,21 +442,21 @@ async function renderProyectos(){
       <div class="meter"><span style="width:${+p.avance || 0}%"></span></div>
       <div class="small">${+p.avance || 0}% de avance${p.fecha_objetivo ? ' · objetivo ' + esc(p.fecha_objetivo) : ''}</div>
       ${p.tareas.length ? `<ul class="tasks">${p.tareas.map(t => `<li class="${t.hecha ? 'done' : ''}">${esc(t.texto)}</li>`).join('')}</ul>` : ''}
-    </div>`).join('') : '<p class="small">Aún no hay proyectos. Dile a Jarvis «crea un proyecto…».</p>';
+    </div>`).join('') : '<p class="small">Aún no hay proyectos. Dile a KAI «crea un proyecto…».</p>';
 }
 async function renderNotas(){
   const all = (await dbAll('notas')).sort((a,b) => b.fecha.localeCompare(a.fecha));
   $('notaList').innerHTML = all.length ? all.map(n => `
     <div class="card"><div class="t"><strong style="font-weight:400">${esc(n.texto)}</strong><button class="x" data-deln="${esc(n.id)}" aria-label="Eliminar">✕</button></div>
     <div class="small">${esc(new Date(n.fecha).toLocaleString('es-CL'))}${n.etiqueta ? ' · ' + esc(n.etiqueta) : ''}</div></div>`).join('')
-    : '<p class="small">Sin notas. Di «Jarvis, anota que…».</p>';
+    : '<p class="small">Sin notas. Di «KAI, anota que…».</p>';
 }
 
 /* ================= Cerebro: Claude ================= */
 let history = [];
 function systemPrompt(){
   const now = new Date();
-  return `Eres Jarvis, el asistente personal por voz del usuario. Responde siempre en español de Chile, breve y natural, porque tu respuesta se lee en voz alta: máximo 2 a 3 frases salvo que te pidan detalle. No uses markdown, listas con símbolos ni emojis.
+  return `Eres KAI, el asistente personal por voz del usuario. Responde siempre en español de Chile, breve y natural, porque tu respuesta se lee en voz alta: máximo 2 a 3 frases salvo que te pidan detalle. No uses markdown, listas con símbolos ni emojis.
 Fecha y hora actual: ${now.toLocaleString('es-CL', {dateStyle:'full', timeStyle:'short'})}.
 Tienes herramientas para gestionar proyectos y notas guardados en el dispositivo; úsalas cuando el usuario pida crear, actualizar, anotar o consultar. Confirma en una frase lo que hiciste.
 ${cfg.about ? 'Contexto del usuario: ' + cfg.about : ''}`;
@@ -537,18 +567,18 @@ $('npAdd').addEventListener('click', async () => { const v = $('npNombre').value
 $('rate').addEventListener('input', e => $('rateV').textContent = (+e.target.value).toFixed(1));
 $('saveCfg').addEventListener('click', async () => {
   Object.assign(cfg, {apiKey:$('apiKey').value.trim(), model:$('model').value, about:$('about').value.trim(),
-    wake:$('wake').value.trim() || 'jarvis', voice:$('voice').value, rate:+$('rate').value, mute:$('mute').checked, autoWake:$('autoWake').checked});
+    wake:$('wake').value.trim() || 'kai', voice:$('voice').value, rate:+$('rate').value, mute:$('mute').checked, autoWake:$('autoWake').checked});
   await kvSet('cfg', cfg);
   $('saveCfg').textContent = 'Guardado ✓'; setTimeout(() => $('saveCfg').textContent = 'Guardar', 1500);
   updateWakeBtn();
 });
-$('testVoice').addEventListener('click', () => { cfg.voice = $('voice').value; cfg.rate = +$('rate').value; const m = cfg.mute; cfg.mute = false; speak('Hola, soy Jarvis. Sistemas en línea.').then(() => cfg.mute = m); });
+$('testVoice').addEventListener('click', () => { cfg.voice = $('voice').value; cfg.rate = +$('rate').value; const m = cfg.mute; cfg.mute = false; speak('Hola, soy KAI. Sistemas en línea.').then(() => cfg.mute = m); });
 $('clrChat').addEventListener('click', async () => { history = []; await kvSet('chatlog', []); emptyLog(); });
 $('expBtn').addEventListener('click', async () => {
   const data = {version:1, exportado:new Date().toISOString(), proyectos:await dbAll('proyectos'), notas:await dbAll('notas')};
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type:'application/json'}));
-  a.download = `jarvis-respaldo-${new Date().toISOString().slice(0,10)}.json`; a.click();
+  a.download = `kai-respaldo-${new Date().toISOString().slice(0,10)}.json`; a.click();
 });
 $('impFile').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
@@ -557,10 +587,27 @@ $('impFile').addEventListener('change', async e => {
     for (const p of data.proyectos || []) await dbPut('proyectos', p);
     for (const n of data.notas || []) await dbPut('notas', n);
     renderProyectos(); renderNotas(); addMsg('s', 'Respaldo importado.');
-  } catch(_){ addMsg('e', 'El archivo no es un respaldo válido de Jarvis.'); }
+  } catch(_){ addMsg('e', 'El archivo no es un respaldo válido de KAI.'); }
   e.target.value = '';
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('drawer').classList.remove('open'); });
+
+/* ================= Instalación como app ================= */
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('instBtn').hidden = false; });
+window.addEventListener('appinstalled', () => { $('instBtn').hidden = true; addMsg('s', 'KAI quedó instalado. Ábrelo desde tu pantalla de inicio.'); });
+$('instBtn').addEventListener('click', async () => {
+  if (!installEvt) return;
+  installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; $('instBtn').hidden = true;
+});
+async function checkFiles(){
+  if (location.protocol !== 'https:') return;
+  const faltan = [];
+  for (const f of ['manifest.webmanifest','sw.js','icon-192.png','icon-512.png']){
+    try { const r = await fetch(f, {cache:'no-store'}); if (!r.ok) faltan.push(f); } catch(_){ faltan.push(f); }
+  }
+  if (faltan.length) addMsg('e', 'Para poder instalar KAI faltan estos archivos en el repositorio: ' + faltan.join(', ') + '. Súbelos junto a index.html.');
+}
 
 /* ================= Inicio ================= */
 (async () => {
@@ -569,10 +616,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') $('drawer').
   const saved = await kvGet('chatlog', []);
   if (saved.length) saved.forEach(m => addMsg(m.r, m.t)); else emptyLog();
   initRec();
-  if (!SR) addMsg('s', 'Este navegador no reconoce voz. Usa Chrome o Edge para hablar con Jarvis.');
+  if (!SR) addMsg('s', 'Este navegador no reconoce voz. Usa Chrome o Edge para hablar con KAI.');
   if (!cfg.apiKey) addMsg('s', 'Modo básico: agrega tu API key en ☰ › Ajustes para conversar libremente.');
   if (cfg.autoWake && SR) toggleWake(true); else updateWakeBtn();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  checkFiles();
 })();
 }
 </script>
@@ -580,8 +628,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') $('drawer').
 </html>
 
 {
-  "name": "Jarvis",
-  "short_name": "Jarvis",
+  "id": "./",
+  "name": "KAI",
+  "short_name": "KAI",
   "description": "Asistente personal por voz: proyectos, notas y conversación con Claude.",
   "lang": "es-CL",
   "start_url": "./",
@@ -591,58 +640,23 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') $('drawer').
   "background_color": "#070e18",
   "theme_color": "#070e18",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
-
-// Jarvis — service worker: deja la app disponible sin conexión.
-const CACHE = 'jarvis-v1';
-const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
-
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
-});
-
-self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-    .then(() => self.clients.claim()));
-});
-
-self.addEventListener('fetch', e => {
-  const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== location.origin) return; // la API de Claude va directo a la red
-  // Red primero (para recibir actualizaciones), caché si no hay conexión
-  e.respondWith(
-    fetch(e.request).then(r => {
-      const copy = r.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy));
-      return r;
-    }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
-  );
-});// Jarvis — service worker: deja la app disponible sin conexión.
-const CACHE = 'jarvis-v1';
-const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
-
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
-});
-
-self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-    .then(() => self.clients.claim()));
-});
-
-self.addEventListener('fetch', e => {
-  const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== location.origin) return; // la API de Claude va directo a la red
-  // Red primero (para recibir actualizaciones), caché si no hay conexión
-  e.respondWith(
-    fetch(e.request).then(r => {
-      const copy = r.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy));
-      return r;
-    }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
-  );
-});
-
