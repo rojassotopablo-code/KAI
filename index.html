@@ -313,6 +313,7 @@ a{color:var(--cy)}
 
       <label for="model">Modelo</label>
       <select class="f" id="model">
+        <option value="auto">Automático: Haiku para conversar, Sonnet para crear (recomendado)</option>
         <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (equilibrado)</option>
         <option value="claude-haiku-5-5">Claude Haiku 5.5 (rápido y barato)</option>
         <option value="claude-opus-5-5">Claude Opus 5.5 (máxima capacidad)</option>
@@ -357,6 +358,18 @@ a{color:var(--cy)}
         <button class="btn" id="testVoice">Probar voz</button>
       </div>
 
+      <h3>Gasto de Claude</h3>
+      <div class="card" id="usoCard"><div class="small">Cargando…</div></div>
+      <label for="tope">Tope mensual (US$): KAI deja de consultar a Claude al llegar</label>
+      <input class="f" id="tope" type="number" min="0" step="1" inputmode="decimal">
+      <p class="note">0 = sin tope. Al 80% KAI te avisa. Los comandos básicos (hora, notas, proyectos simples) siguen funcionando sin gasto.</p>
+
+      <h3>Memoria de KAI</h3>
+      <label class="chk"><input type="checkbox" id="autoMem"> Aprender automáticamente de las conversaciones</label>
+      <p class="note">KAI guarda datos útiles que le cuentas (tu equipo, mandantes, preferencias, decisiones) para no preguntarte de nuevo. También: «KAI, recuerda que…» / «olvida lo de…».</p>
+      <div id="memList"></div>
+      <div class="row" style="flex-wrap:nowrap"><input class="f sm" id="memNew" placeholder="Agregar algo que KAI debe recordar"><button class="btn sm" id="memAdd" type="button">Agregar</button></div>
+
       <h3>Sincronización entre dispositivos</h3>
       <div class="card" id="syncCard">
         <div class="t"><strong id="syncState">Sin configurar</strong></div>
@@ -396,7 +409,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v4.1 · Fase 5</p>
+      <p class="note" id="ver">KAI v4.2 · Fase 5</p>
     </div>
   </div>
 </div>
@@ -424,10 +437,10 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6
 let db;
 function openDB(){
   return new Promise((res, rej) => {
-    const r = indexedDB.open('jarvis', 5);
+    const r = indexedDB.open('jarvis', 6);
     r.onupgradeneeded = () => {
       const d = r.result;
-      ['proyectos','notas','kv','creaciones','eventos','borrados','kpis','kpireg','contactos'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
+      ['proyectos','notas','kv','creaciones','eventos','borrados','kpis','kpireg','contactos','memoria','uso'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -438,18 +451,20 @@ const dbAll = store => new Promise(r => { const q = tx(store).getAll(); q.onsucc
 const dbPutRaw = (store, v) => new Promise(r => { const q = tx(store,'readwrite').put(v); q.onsuccess = () => r(v); q.onerror = () => r(null); });
 const dbDelRaw = (store, id) => new Promise(r => { const q = tx(store,'readwrite').delete(id); q.onsuccess = q.onerror = () => r(); });
 // Los datos que se sincronizan llevan la hora de su último cambio; los borrados dejan una marca para borrarse también en el otro dispositivo
-const SYNCED = ['proyectos','notas','eventos','creaciones','kpis','kpireg','contactos'];
+const SYNCED = ['proyectos','notas','eventos','creaciones','kpis','kpireg','contactos','memoria','uso'];
 const dbPut = (store, v) => { if (SYNCED.includes(store) && v){ v._mod = Date.now(); scheduleSync(); } return dbPutRaw(store, v); };
 const dbDel = async (store, id) => { if (SYNCED.includes(store)){ await dbPutRaw('borrados', {id:store + ':' + id, store, rid:id, _mod:Date.now()}); scheduleSync(); } return dbDelRaw(store, id); };
 const kvGet = async (k, d) => { const q = tx('kv').get(k); return new Promise(r => { q.onsuccess = () => r(q.result ? q.result.v : d); q.onerror = () => r(d); }); };
 const kvSet = (k, v) => dbPut('kv', {id:k, v});
 
 /* ================= Configuración ================= */
-const cfg = {convSeg:15, web:true, pausa:1.5, wakeAlt:[], followUp:'siempre', apiKey:'', model:'claude-sonnet-5-5', about:'', wake:'kai', voice:'', rate:1.1, mute:false, autoWake:false};
+const cfg = {convSeg:15, web:true, pausa:1.5, wakeAlt:[], followUp:'siempre', apiKey:'', model:'auto', tope:20, autoMem:true, about:'', wake:'kai', voice:'', rate:1.1, mute:false, autoWake:false};
 async function loadCfg(){ Object.assign(cfg, await kvGet('cfg', {})); if (norm(cfg.wake) === 'jarvis') cfg.wake = 'kai';
   if (!cfg.v3){ cfg.v3 = true; if (+cfg.pausa === 2) cfg.pausa = 1.5; if (+cfg.rate === 1) cfg.rate = 1.1; if (cfg.web === undefined) cfg.web = true; }
-  if (!cfg.v33){ cfg.v33 = true; if (cfg.followUp === 'pregunta') cfg.followUp = 'siempre'; } }
+  if (!cfg.v33){ cfg.v33 = true; if (cfg.followUp === 'pregunta') cfg.followUp = 'siempre'; }
+  if (!cfg.v42){ cfg.v42 = true; if (cfg.model === 'claude-sonnet-5-5') cfg.model = 'auto'; if (cfg.tope === undefined) cfg.tope = 20; if (cfg.autoMem === undefined) cfg.autoMem = true; } }
 function fillCfg(){
+  if ($('tope')){ $('tope').value = cfg.tope ?? 20; $('autoMem').checked = cfg.autoMem !== false; }
   $('apiKey').value = cfg.apiKey; $('model').value = cfg.model; $('about').value = cfg.about;
   $('wake').value = cfg.wake; $('rate').value = cfg.rate; $('rateV').textContent = (+cfg.rate).toFixed(1);
   $('mute').checked = cfg.mute; $('followUp').value = cfg.followUp || 'pregunta'; $('convSeg').value = cfg.convSeg || 15; $('convV').textContent = cfg.convSeg || 15; $('pausa').value = cfg.pausa || 2; $('pausaV').textContent = (+cfg.pausa || 2).toFixed(1); renderAlt(); $('autoWake').checked = cfg.autoWake; $('web').checked = cfg.web !== false;
@@ -970,6 +985,25 @@ const actions = {
     const ok = await goView(vista, {fecha, proyecto, creacion, kpi});
     return ok ? {ok:true, vista} : {error:'Vista no encontrada'};
   },
+  async recordar({texto, tipo = 'otro'}){
+    if (!texto || texto.length < 3) return {error:'Nada que recordar'};
+    if (/\b(contrase(ñ|n)a|password|clave|token|api key|sk-ant|ghp_|github_pat|tarjeta|cvv)\b/i.test(texto)) return {error:'Por seguridad no guardo contraseñas, llaves ni datos de tarjetas.'};
+    const all = await allMem(), n = norm(texto);
+    if (all.some(m => norm(m.texto) === n)) return {ok:true, nota:'Ya lo sabía'};
+    await dbPut('memoria', {id:uid(), texto, tipo:['persona','preferencia','trabajo','proyecto','pyme','otro'].includes(tipo) ? tipo : 'otro', creado:new Date().toISOString()});
+    renderMem(); return {ok:true};
+  },
+  async olvidar({buscar}){
+    const n = norm(buscar || ''); if (!n) return {error:'Indica qué olvidar'};
+    const words = n.split(' ').filter(w => w.length > 3);
+    const hits = (await allMem()).filter(m => norm(m.texto).includes(n) || (words.length && words.every(w => norm(m.texto).includes(w))));
+    for (const m of hits) await dbDel('memoria', m.id);
+    renderMem(); return hits.length ? {ok:true, olvidados:hits.map(m => m.texto)} : {error:'No encontré nada parecido en la memoria', memoria:(await allMem()).slice(0, 30).map(m => m.texto)};
+  },
+  async consultar_gasto({mes} = {}){
+    const t = await usoMes(/^\d{4}-\d{2}$/.test(mes || '') ? mes : mesActual());
+    return {mes:t.mes, total_usd:Math.round(t.usd * 10000) / 10000, consultas:t.consultas, tope_mensual_usd:+cfg.tope || null, por_modelo:Object.fromEntries(Object.entries(t.porModelo).map(([m, v]) => [NOMBRE_M[m] || m, {usd:Math.round(v.usd * 10000) / 10000, consultas:v.consultas}])), modo:cfg.model === 'auto' ? 'automático' : (NOMBRE_M[cfg.model] || cfg.model)};
+  },
   async guardar_contacto({nombre, email = '', telefono = '', cargo = ''}){
     if (!nombre) return {error:'Falta el nombre'};
     const ex = await findCont(nombre), c = ex && norm(ex.nombre) === norm(nombre) ? ex : {id:uid(), nombre};
@@ -1033,6 +1067,9 @@ const tools = [
   {name:'registrar_kpi', description:'Registra un valor de un KPI (si no existe el KPI, créalo antes con crear_kpi). Un registro por fecha: si ya hay uno ese día, se reemplaza.', input_schema:S({kpi:{type:'string'}, valor:{type:'number'}, fecha:{type:'string', description:'AAAA-MM-DD; para valores mensuales usa el último día del mes que corresponde'}, nota:{type:'string'}}, ['kpi','valor'])},
   {name:'consultar_kpis', description:'Estado de los KPIs: último valor, meta, promedio, tendencia, % de periodos en meta, si falta registrar e historial. Úsalo antes de analizar o hacer informes.', input_schema:S({kpi:{type:'string', description:'Omitir para todos'}, desde:{type:'string'}, hasta:{type:'string'}})},
   {name:'modificar_kpi', description:'Cambia la definición de un KPI (meta, unidad, sentido, frecuencia, nombre, categoría), borra el registro de una fecha o elimina el KPI completo.', input_schema:S({kpi:{type:'string'}, nombre:{type:'string'}, unidad:{type:'string'}, meta:{type:'number'}, sentido:{type:'string', enum:['mayor','menor']}, frecuencia:{type:'string', enum:Object.keys(FREQ)}, categoria:{type:'string'}, borrar_registro_fecha:{type:'string'}, eliminar:{type:'boolean'}}, ['kpi'])},
+  {name:'recordar', description:'Guarda un dato durable sobre el usuario en la memoria de KAI (persona de su equipo y su rol, preferencia de cómo hacer las cosas, dato de su trabajo, proyecto o pyme). Redáctalo como una frase clara en tercera persona, por ejemplo «Juan Pérez es supervisor del turno 7x7 A».', input_schema:S({texto:{type:'string'}, tipo:{type:'string', enum:['persona','preferencia','trabajo','proyecto','pyme','otro']}}, ['texto'])},
+  {name:'olvidar', description:'Borra de la memoria los datos que coincidan con el texto indicado.', input_schema:S({buscar:{type:'string'}}, ['buscar'])},
+  {name:'consultar_gasto', description:'Gasto estimado en Claude del mes (o de un mes AAAA-MM), por modelo, y el tope mensual.', input_schema:S({mes:{type:'string'}})},
   {name:'guardar_contacto', description:'Guarda o actualiza un contacto (nombre, correo, WhatsApp con código de país, cargo).', input_schema:S({nombre:{type:'string'}, email:{type:'string'}, telefono:{type:'string'}, cargo:{type:'string'}}, ['nombre'])},
   {name:'listar_contactos', description:'Lista los contactos guardados.', input_schema:S({})},
   {name:'preparar_envio', description:'Prepara un envío o publicación y muestra una tarjeta con un botón: al tocarlo se abre WhatsApp, el correo, LinkedIn, Facebook, Instagram o X con el texto (y el archivo adjunto) listos; el usuario confirma el envío. Nunca envía solo. Para whatsapp/correo, para = nombre de un contacto guardado, o un número o correo.', input_schema:S({canal:{type:'string', enum:Object.keys(CANALES)}, para:{type:'string'}, asunto:{type:'string'}, mensaje:{type:'string', description:'Texto final listo para enviar, adaptado al canal (WhatsApp breve; correo con saludo y firma; LinkedIn profesional con 3-5 hashtags; Instagram con emojis moderados y hashtags; X máx. 280 caracteres)'}, adjuntar_creacion:{type:'string', description:'Título de una creación para adjuntar como archivo'}, formato:{type:'string', enum:['pptx','xlsx','word','html']}}, ['canal','mensaje'])},
@@ -1044,7 +1081,7 @@ const tools = [
 /* ---------- Vistas ---------- */
 let filtro = 'activo', curProj = null, openTask = null;
 const fechaCls = f => !f ? '' : f < hoy() ? 'late' : f === hoy() ? 'today' : '';
-function refreshUI(){ if ($('drawer').classList.contains('open')){ renderProyectos(); renderAgenda(); renderKpis(); renderCrea(); renderNotas(); renderCont(); } }
+function refreshUI(){ if ($('drawer').classList.contains('open')){ renderMem(); renderUso(); renderProyectos(); renderAgenda(); renderKpis(); renderCrea(); renderNotas(); renderCont(); } }
 
 async function renderProyectos(){
   if (curProj) return renderDetalle();
@@ -1681,10 +1718,88 @@ function planText(p){
 
 /* ================= Cerebro: Claude ================= */
 let history = [];
+/* ================= Memoria personal ================= */
+async function allMem(){ return (await dbAll('memoria')).sort((a,b) => (b.creado || '').localeCompare(a.creado || '')); }
+async function memText(){
+  const m = await allMem(); if (!m.length) return '';
+  let out = '', n = 0;
+  for (const x of m){ const line = `- [${x.tipo || 'otro'}] ${x.texto}\n`; if (out.length + line.length > 6000) break; out += line; n++; }
+  return `\nLo que sabes del usuario (memoria de KAI, ${n} de ${m.length} datos, más recientes primero):\n${out}`;
+}
+async function renderMem(){
+  if (!$('memList')) return;
+  const m = await allMem();
+  $('memList').innerHTML = m.length ? m.map(x => `<div class="ev"><div class="hr" style="width:auto;min-width:70px;font-size:12px">${esc(x.tipo || 'otro')}</div><div class="b small" style="color:var(--ink)">${esc(x.texto)}</div><button class="x" data-delm="${esc(x.id)}" aria-label="Olvidar">✕</button></div>`).join('') : '<p class="small">KAI todavía no recuerda nada. Cuéntale de ti o dile «recuerda que…».</p>';
+}
+$('memList').addEventListener('click', async e => { const b = e.target.closest('[data-delm]'); if (b){ await dbDel('memoria', b.dataset.delm); renderMem(); } });
+$('tope').addEventListener('change', async () => { cfg.tope = Math.max(0, +$('tope').value || 0); await kvSet('cfg', cfg); renderUso(); });
+$('autoMem').addEventListener('change', async () => { cfg.autoMem = $('autoMem').checked; await kvSet('cfg', cfg); });
+$('memAdd').addEventListener('click', async () => { const t = $('memNew').value.trim(); if (!t) return; await actions.recordar({texto:t, tipo:'otro'}); $('memNew').value = ''; });
+
+/* ================= Gasto y elección de modelo ================= */
+// Precios por millón de tokens (USD), según la página oficial de precios de Anthropic
+const PRECIOS = {
+  'claude-haiku-5-5':{in:0.10, out:0.50, cw:0.125, cr:0.01, inL:0.50, outL:2.50, cwL:0.625, crL:0.05},
+  'claude-sonnet-5-5':{in:2, out:10, cw:2.50, cr:0.10},
+  'claude-opus-5-5':{in:4, out:20, cw:5, cr:0.20}
+};
+const NOMBRE_M = {'claude-haiku-5-5':'Haiku', 'claude-sonnet-5-5':'Sonnet', 'claude-opus-5-5':'Opus'};
+const mesActual = () => hoy().slice(0, 7);
+let devId = null;
+async function costOf(model, u){
+  const P = PRECIOS[model] || PRECIOS['claude-sonnet-5-5']; u = u || {};
+  const i = u.input_tokens || 0, o = u.output_tokens || 0, cw = u.cache_creation_input_tokens || 0, cr = u.cache_read_input_tokens || 0;
+  const large = P.inL && (i + cw + cr) > 100000;
+  const usd = (i * (large ? P.inL : P.in) + o * (large ? P.outL : P.out) + cw * (large ? P.cwL : P.cw) + cr * (large ? P.crL : P.cr)) / 1e6
+    + ((u.server_tool_use && u.server_tool_use.web_search_requests) || 0) * 0.01;
+  return {usd, i, o, cw, cr};
+}
+async function addUsage(model, usage){
+  if (!devId){ devId = await kvGet('devId', null); if (!devId){ devId = uid(); await kvSet('devId', devId); } }
+  const c = await costOf(model, usage), id = mesActual() + ':' + devId;
+  const rec = (await dbAll('uso')).find(x => x.id === id) || {id, mes:mesActual(), usd:0, consultas:0, porModelo:{}};
+  rec.usd += c.usd; rec.consultas++;
+  const pm = rec.porModelo[model] || (rec.porModelo[model] = {usd:0, consultas:0, tokens_entrada:0, tokens_salida:0, tokens_cache:0});
+  pm.usd += c.usd; pm.consultas++; pm.tokens_entrada += c.i + c.cw; pm.tokens_salida += c.o; pm.tokens_cache += c.cr;
+  await dbPut('uso', rec);
+  renderUso();
+}
+async function usoMes(mes = mesActual()){
+  const recs = (await dbAll('uso')).filter(x => x.mes === mes), tot = {mes, usd:0, consultas:0, porModelo:{}};
+  for (const r of recs){ tot.usd += r.usd; tot.consultas += r.consultas; for (const [m, v] of Object.entries(r.porModelo || {})){ const t = tot.porModelo[m] || (tot.porModelo[m] = {usd:0, consultas:0}); t.usd += v.usd; t.consultas += v.consultas; } }
+  return tot;
+}
+const usd = v => 'US$' + (v < 0.01 && v > 0 ? v.toFixed(4) : v.toFixed(2)).replace('.', ',');
+async function renderUso(){
+  if (!$('usoCard')) return;
+  const t = await usoMes(), tope = +cfg.tope || 0, pct = tope ? Math.min(100, t.usd / tope * 100) : 0;
+  const mesTxt = new Date(t.mes + '-15T12:00').toLocaleDateString('es-CL', {month:'long', year:'numeric'});
+  $('usoCard').innerHTML = `<div class="t"><strong>${usd(t.usd)} en ${esc(mesTxt)}</strong><span class="small">${t.consultas} consultas</span></div>
+    ${tope ? `<div class="meter"><span style="width:${pct}%;background:${pct >= 100 ? 'var(--bad)' : pct >= 80 ? 'var(--warn)' : 'var(--cy)'}"></span></div><div class="small">${Math.round(pct)}% del tope de ${usd(tope)}</div>` : '<div class="small">Sin tope mensual</div>'}
+    <div class="meta" style="margin-top:6px">${Object.entries(t.porModelo).map(([m, v]) => `<span>${esc(NOMBRE_M[m] || m)}: ${usd(v.usd)} (${v.consultas})</span>`).join('') || '<span>Sin consultas este mes</span>'}</div>
+    <div class="note">Suma de todos tus dispositivos. Estimado con los precios oficiales; el cobro real lo ves en console.anthropic.com.</div>`;
+}
+let topeAvisado = '';
+async function checkTope(){
+  const tope = +cfg.tope || 0; if (!tope) return;
+  const t = await usoMes();
+  if (t.usd >= tope) throw new Error(`Llegaste al tope mensual de ${usd(tope)} (llevas ${usd(t.usd)}). Puedes subirlo en Ajustes › Gasto de Claude.`);
+  if (t.usd >= tope * 0.8 && topeAvisado !== mesActual()){ topeAvisado = mesActual(); addMsg('s', `Aviso: llevas ${usd(t.usd)}, el ${Math.round(t.usd / tope * 100)}% de tu tope mensual de ${usd(tope)}.`); }
+}
+// Modo automático: Haiku para conversar y gestionar; Sonnet para crear, analizar o trabajar con archivos
+const HEAVY_RX = /\b(crea|crear|creame|hazme|haz|arma|armame|prepara|preparame|redacta|redactame|escribe|elabora|genera|disena|programa|desarrolla|informe|reporte|procedimiento|presentacion|powerpoint|excel|planilla|documento|carta|acta|app|aplicacion|calculadora|formulario|codigo|analiza|analisis|compara|evalua|resume|resumen|plan|estrategia|campana|mejora|reescribe|traduce|corrige)\b/;
+const HEAVY_TOOLS = ['crear_creacion','modificar_creacion','editar_creacion'];
+function pickModel(content){
+  if (cfg.model !== 'auto') return cfg.model;
+  if (Array.isArray(content) && content.some(c => c.type === 'image' || c.type === 'document')) return 'claude-sonnet-5-5';
+  const t = norm(Array.isArray(content) ? content.filter(c => c.type === 'text').map(c => c.text).join(' ') : content);
+  if (t.length > 280 || HEAVY_RX.test(t) || (vCur && /\b(agrega|cambia|quita|modifica|actualiza|pon|saca|anade)\b/.test(t))) return 'claude-sonnet-5-5';
+  return 'claude-haiku-5-5';
+}
+
 function systemPrompt(){
-  const now = new Date();
-  return `Eres KAI, el asistente personal del usuario: tienes todas las capacidades de Claude (responder cualquier pregunta, explicar, analizar, redactar, planificar, calcular, programar, crear documentos, presentaciones y aplicaciones) y además manejas sus proyectos, agenda, notas y creaciones con tus herramientas.
-Hoy es ${now.toLocaleDateString('es-CL', {dateStyle:'full'})} (${hoy()}), son las ${now.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'})}. En las herramientas usa fechas AAAA-MM-DD y horas HH:MM, y calcula las fechas relativas ("el jueves", "en dos semanas") desde hoy.
+  return `Eres KAI, el asistente personal del usuario: tienes todas las capacidades de Claude (responder cualquier pregunta, explicar, analizar, redactar, planificar, calcular, programar, crear documentos, presentaciones y aplicaciones) y además manejas sus proyectos, agenda, KPIs, contactos, notas y creaciones con tus herramientas.
+En las herramientas usa fechas AAAA-MM-DD y horas HH:MM, y calcula las fechas relativas ("el jueves", "en dos semanas") desde la fecha de hoy que se indica más abajo.
 
 Cómo responder:
 - Escribe en español de Chile. El usuario suele hablarte por voz y tu respuesta se lee en voz alta: empieza siempre con una frase corta que resuma o confirme. Para conversación simple, 1 a 3 frases sin formato.
@@ -1701,7 +1816,13 @@ Cómo responder:
 - Envíos y redes sociales: para mandar algo por WhatsApp o correo, o publicar en LinkedIn, Facebook, Instagram o X, redacta el texto final adaptado al canal y usa preparar_envio (con adjuntar_creacion si corresponde enviar un informe, presentación o Excel). Tú no envías: el usuario toca el botón y confirma en la app; dile «te dejé el envío listo, toca el botón». Si falta el correo o número de un contacto, pídelo y guárdalo con guardar_contacto. Para publicar más tarde usa programar_publicacion.
 - Usa las herramientas sin pedir permiso. Si no encuentras algo, lista antes de rendirte. Para "qué tengo hoy" usa resumen_pendientes.
 - Si necesitas información actual (noticias, precios, normativa vigente, datos recientes) y tienes búsqueda web, úsala.
-${openCreaHint()}${cfg.about ? '\nContexto del usuario: ' + cfg.about : ''}`;
+- Memoria: tienes una memoria persistente del usuario (abajo). Úsala con naturalidad, sin recitarla. ${cfg.autoMem !== false ? 'Cuando el usuario cuente algo durable y útil para el futuro (personas de su equipo y sus roles, mandantes, cómo le gusta que hagas las cosas, decisiones, datos de sus proyectos o de su pyme), guárdalo con recordar sin preguntar y sin anunciarlo largamente. No guardes lo pasajero ni lo que ya está en la memoria.' : 'Solo guarda algo en memoria cuando el usuario lo pida explícitamente («recuerda que…»).'} Nunca guardes contraseñas, llaves, números de tarjetas o cuentas, ni datos de salud. Si el usuario corrige algo que recordabas, usa olvidar y recordar con el dato correcto.`;
+}
+async function systemBlocks(){
+  const now = new Date();
+  const dyn = `Hoy es ${now.toLocaleDateString('es-CL', {dateStyle:'full'})} (${hoy()}), son las ${now.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'})}.${openCreaHint()}${cfg.about ? '\nContexto del usuario: ' + cfg.about : ''}${await memText()}`;
+  // la parte fija va con caché: se cobra mucho más barata cuando se repite
+  return [{type:'text', text:systemPrompt(), cache_control:{type:'ephemeral'}}, {type:'text', text:dyn}];
 }
 function openCreaHint(){ return vCur ? `\nAhora el usuario tiene abierta en pantalla la creación con id ${vCur}; si pide cambios sin decir cuál, se refiere a esa.` : ''; }
 function trimHistory(){
@@ -1733,13 +1854,16 @@ function cleanContent(content){
   return out;
 }
 const WEB_TOOL = {type:'web_search_20250305', name:'web_search', max_uses:3};
-async function callClaude(){
+async function callClaude(model){
+  const msgs = history.map(m => m);
+  // marca de caché en el último mensaje: en las vueltas con herramientas se reutiliza la conversación
+  if (msgs.length){ const last = msgs[msgs.length - 1]; const content = typeof last.content === 'string' ? [{type:'text', text:last.content}] : last.content.map(c => ({...c})); const k = content.length - 1; if (content[k] && ['text','tool_result','image','document'].includes(content[k].type)) content[k] = {...content[k], cache_control:{type:'ephemeral'}}; msgs[msgs.length - 1] = {...last, content}; }
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method:'POST',
     headers:{'content-type':'application/json', 'x-api-key':cfg.apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:cfg.model, max_tokens:16000, system:systemPrompt(), tools:cfg.web !== false ? [...tools, WEB_TOOL] : tools, messages:history})
+    body:JSON.stringify({model, max_tokens:16000, system:await systemBlocks(), tools:cfg.web !== false ? [...tools, WEB_TOOL] : tools, messages:msgs})
   });
-  if (r.ok) return r.json();
+  if (r.ok){ const j = await r.json(); addUsage(model, j.usage).catch(() => {}); return j; }
   let msg = ''; try { msg = (await r.json()).error.message || ''; } catch(_){}
   const e = new Error(msg); e.status = r.status; throw e;
 }
@@ -1754,12 +1878,16 @@ function friendly(e){
   return `Error ${e.status} de Claude: ${m || 'sin detalle'}`;
 }
 async function askClaude(text, retried){ // text: texto o lista de bloques (con adjuntos)
+  await checkTope();
+  let model = pickModel(text);
   const start = history.length;
   history.push({role:'user', content:text});
   try {
     for (let step = 0; step < 10; step++){
       trimHistory();
-      const data = await callClaude();
+      let data = await callClaude(model);
+      // si Haiku decide crear o reescribir un entregable, ese paso lo hace Sonnet para mejor calidad
+      if (cfg.model === 'auto' && model === 'claude-haiku-5-5' && (data.content || []).some(c => c.type === 'tool_use' && HEAVY_TOOLS.includes(c.name))){ model = 'claude-sonnet-5-5'; data = await callClaude(model); }
       const content = cleanContent(data.content);
       if (data.stop_reason === 'pause_turn'){ if (content.length) history.push({role:'assistant', content}); continue; } // búsqueda web larga: continuar
       const uses = data.stop_reason === 'tool_use' ? content.filter(c => c.type === 'tool_use') : [];
@@ -2095,7 +2223,7 @@ $('trainBtn').addEventListener('click', () => training ? finishTraining() : star
 $('altClr').addEventListener('click', async () => { cfg.wakeAlt = []; await kvSet('cfg', cfg); renderAlt(); });
 $('rate').addEventListener('input', e => $('rateV').textContent = (+e.target.value).toFixed(1));
 $('saveCfg').addEventListener('click', async () => {
-  Object.assign(cfg, {apiKey:$('apiKey').value.trim(), model:$('model').value, about:$('about').value.trim(),
+  Object.assign(cfg, {tope:Math.max(0, +$('tope').value || 0), autoMem:$('autoMem').checked, apiKey:$('apiKey').value.trim(), model:$('model').value, about:$('about').value.trim(),
     wake:$('wake').value.trim() || 'kai', voice:$('voice').value, rate:+$('rate').value, mute:$('mute').checked, web:$('web').checked, followUp:$('followUp').value, pausa:+$('pausa').value, convSeg:+$('convSeg').value, autoWake:$('autoWake').checked});
   await kvSet('cfg', cfg);
   $('saveCfg').textContent = 'Guardado ✓'; setTimeout(() => $('saveCfg').textContent = 'Guardar', 1500);

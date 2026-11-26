@@ -56,6 +56,12 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v4.2 — Memoria, modelo automático y control de gasto
+- **Memoria personal:** KAI recuerda lo que le cuentas (tu equipo y sus roles, mandantes, preferencias, decisiones, datos de tu pyme) y lo usa sin que lo repitas. Aprende solo o con «KAI, recuerda que…» / «olvida lo de…». Se ve y se edita en Ajustes › Memoria de KAI, y se sincroniza entre dispositivos. Nunca guarda contraseñas, llaves ni datos de tarjetas.
+- **Modelo automático (nuevo por defecto):** Haiku 5.5 para conversar, consultar y gestionar (rápido y unas 20 veces más barato), y Sonnet 5.5 para crear documentos, presentaciones, Excel y apps, analizar o trabajar con fotos y archivos. Si Haiku decide crear algo, ese paso lo hace Sonnet.
+- **Caché de instrucciones:** la parte fija de cada consulta se cobra a una fracción del precio cuando se repite.
+- **Gasto de Claude (Ajustes):** cuánto llevas este mes (suma de todos tus dispositivos), por modelo, con **tope mensual** (20 US$ por defecto): aviso al 80% y pausa al 100%. Por voz: «¿cuánto llevo gastado este mes?».
+
 ## Cambios v4.1 — WhatsApp, correo y redes sociales
 - **Envíos con un toque:** «mándale el informe a Juan por WhatsApp», «escríbele un correo a Pedro con el Excel de presupuesto», «publica en LinkedIn que cerramos noviembre sin incidentes». KAI redacta el texto adaptado al canal, adjunta el archivo (Word, PowerPoint o Excel) y muestra una **tarjeta de envío**. Al tocar el botón se abre WhatsApp, el correo, LinkedIn, Facebook, Instagram o X con todo listo, y tú confirmas.
 - El texto de la tarjeta se puede corregir antes de enviar. También están los botones «Otra app» (menú de compartir del teléfono), «Copiar texto» y, en el PC, «Gmail web» / «Outlook web».
