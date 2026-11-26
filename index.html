@@ -46,12 +46,26 @@ header{display:flex;align-items:center;gap:12px;padding:14px 0}
 .heard{color:var(--ink)}
 
 /* Chat */
+.dash{flex:none;display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding:6px 2px 4px;scrollbar-width:none}
+.dash::-webkit-scrollbar{display:none}.dash[hidden]{display:none}
+.dcard{flex:0 0 auto;min-width:136px;max-width:190px;scroll-snap-align:start;text-align:left;color:var(--ink);font:inherit;padding:9px 12px;border-radius:14px;border:1px solid #1f3a5c;
+  background:linear-gradient(160deg,rgba(70,220,255,.10),rgba(15,29,48,.92) 55%);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 6px 18px rgba(0,0,0,.25);position:relative;overflow:hidden;animation:dIn .45s ease both}
+.dcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--acc,var(--cy));box-shadow:0 0 12px var(--acc,var(--cy))}
+.dcard .dl{font-size:11px;letter-spacing:.02em;color:var(--mute);display:flex;justify-content:space-between;gap:6px;white-space:nowrap}
+.dcard .dv{font-family:Rajdhani,sans-serif;font-size:21px;font-weight:700;line-height:1.15;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dcard .ds{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dcard .dbar{height:4px;border-radius:9px;background:#0a1422;margin-top:5px;overflow:hidden}.dcard .dbar span{display:block;height:100%;background:var(--acc,var(--cy))}
+.dcard:active{transform:scale(.97)}
+.kd{display:inline-flex;gap:8px;font-size:15px}.kd i{font-style:normal}
+@keyframes dIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.dcard{animation:none}}
 .log{flex:1;display:flex;flex-direction:column;gap:10px;padding:12px 2px 16px;overflow-y:auto;min-height:0;overscroll-behavior:contain}
 .log>:first-child{margin-top:auto}
 /* Con conversación en curso el orbe se achica para dar espacio al diálogo */
 .app.chat .orb{width:min(26vw,104px)}
 .app.chat .stage{padding:0}
 .app.chat .hint{font-size:15px;margin-top:4px;min-height:22px}
+.msg.live::after{content:'▍';color:var(--cy);animation:blink 1s infinite;margin-left:2px}
 .typing{align-self:flex-start;display:flex;gap:5px;padding:12px 14px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
 .typing i{width:7px;height:7px;border-radius:50%;background:var(--cy);animation:blink 1.2s infinite}
 .typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
@@ -231,6 +245,9 @@ a{color:var(--cy)}
     <button class="ib inst" id="instBtn" hidden aria-label="Instalar KAI">
       <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
     </button>
+    <button class="ib on" id="dashBtn" title="Centro de mando" aria-label="Mostrar u ocultar el centro de mando">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+    </button>
     <button class="ib" id="wakeBtn" title="Escucha continua (palabra de activación)" aria-label="Escucha continua">
       <svg viewBox="0 0 24 24"><path d="M2 12h2M6 8v8M10 5v14M14 8v8M18 10v4M22 12h-2"/></svg>
     </button>
@@ -244,6 +261,7 @@ a{color:var(--cy)}
     <p class="hint" id="hint">Toca el orbe o di «KAI»</p>
   </div>
 
+  <div class="dash" id="dash" aria-label="Centro de mando"></div>
   <div class="log" id="log" aria-live="polite"></div>
   <button class="tobot" id="toBot" type="button" aria-label="Ir al final">↓</button>
 
@@ -419,7 +437,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v5.2 · Orbe 3D</p>
+      <p class="note" id="ver">KAI v5.3 · Tiempo real</p>
     </div>
   </div>
 </div>
@@ -470,8 +488,8 @@ async function recPrev(store, id){
   const k = store + ':' + id; if (recorder.seen.has(k)) return; recorder.seen.add(k);
   const prev = await dbGet(store, id); recorder.ops.push({store, id, antes:prev ? JSON.parse(JSON.stringify(prev)) : null});
 }
-const dbPut = async (store, v) => { if (SYNCED.includes(store) && v){ await recPrev(store, v.id); v._mod = Date.now(); scheduleSync(); } return dbPutRaw(store, v); };
-const dbDel = async (store, id) => { if (SYNCED.includes(store)){ await recPrev(store, id); await dbPutRaw('borrados', {id:store + ':' + id, store, rid:id, _mod:Date.now()}); scheduleSync(); } return dbDelRaw(store, id); };
+const dbPut = async (store, v) => { if (SYNCED.includes(store) && v){ await recPrev(store, v.id); v._mod = Date.now(); scheduleSync(); scheduleDash(); } return dbPutRaw(store, v); };
+const dbDel = async (store, id) => { if (SYNCED.includes(store)){ await recPrev(store, id); await dbPutRaw('borrados', {id:store + ':' + id, store, rid:id, _mod:Date.now()}); scheduleSync(); scheduleDash(); } return dbDelRaw(store, id); };
 const kvGet = async (k, d) => { const q = tx('kv').get(k); return new Promise(r => { q.onsuccess = () => r(q.result ? q.result.v : d); q.onerror = () => r(d); }); };
 const kvSet = (k, v) => dbPut('kv', {id:k, v});
 
@@ -688,7 +706,52 @@ function speak(text){
     setTimeout(() => speechSynthesis.speak(u), 60); // pausa corta tras cancel(): Chrome a veces descarta lo que se pide justo después
   });
 }
-function stopSpeaking(){ if ('speechSynthesis' in window) speechSynthesis.cancel(); if (speaking) setTimeout(() => { if (speaking){ speaking = false; resumeRec(); setState(wakeOn ? 'listening' : 'idle'); } }, 400); }
+// Voz por partes: KAI empieza a hablar con la primera frase mientras el resto de la respuesta sigue llegando
+const SPK = {on:false, buf:'', chars:0, pend:0, capped:false, ended:false, any:false, idle:null, wake:null, inCode:false};
+function pickVoice(u){ const v = voices.find(v => v.name === cfg.voice) || voices.find(v => /es[-_](CL|419|MX|US)/i.test(v.lang)) || voices[0]; if (v){ u.voice = v; u.lang = v.lang; } else u.lang = 'es-CL'; u.rate = +cfg.rate || 1; }
+function streamSpeechStart(){
+  Object.assign(SPK, {on:!cfg.mute && 'speechSynthesis' in window, buf:'', chars:0, pend:0, capped:false, ended:false, any:false, inCode:false});
+  SPK.idle = new Promise(res => SPK.wake = res);
+  if (SPK.on) try { speechSynthesis.cancel(); } catch(_){}
+}
+function speakPiece(t){
+  t = clean(t); if (!t || t.length < 2) return;
+  if (!SPK.any){ SPK.any = true; pauseRec(); speaking = true; setState('speaking'); }
+  SPK.pend++;
+  const u = new SpeechSynthesisUtterance(t); pickVoice(u);
+  let fin = false;
+  const end = () => { if (fin) return; fin = true; clearTimeout(g); SPK.pend--; checkSpeechIdle(); };
+  const g = setTimeout(end, 5000 + t.length * 120 / (+cfg.rate || 1)); // seguro si el navegador no avisa
+  u.onend = end; u.onerror = end;
+  speechSynthesis.speak(u);
+}
+function streamSpeechFeed(txt){
+  if (!SPK.on || SPK.capped) return;
+  SPK.buf += txt;
+  // no se leen bloques de código
+  let out = ''; const parts = SPK.buf.split('```');
+  if (parts.length > 1){ for (let i = 0; i < parts.length - 1; i++){ if (!SPK.inCode) out += parts[i]; else out += ' '; SPK.inCode = !SPK.inCode; } SPK.buf = parts[parts.length - 1]; if (SPK.inCode){ SPK.buf = ''; } }
+  if (SPK.inCode) return;
+  SPK.buf = out + SPK.buf;
+  let m;
+  while ((m = SPK.buf.match(/^([\s\S]*?[.!?:;](?=\s)|[\s\S]*?\n)/))){
+    const s = m[1]; SPK.buf = SPK.buf.slice(s.length);
+    if (!s.trim()) continue;
+    if (SPK.chars + s.length > 320 && SPK.chars > 0){ SPK.capped = true; speakPiece('El detalle está en pantalla.'); return; }
+    SPK.chars += s.length; speakPiece(s);
+  }
+}
+function streamSpeechEnd(){
+  if (!SPK.on) return;
+  if (!SPK.capped && SPK.buf.trim() && !SPK.inCode){ if (SPK.chars + SPK.buf.length > 320 && SPK.chars > 0) speakPiece('El detalle está en pantalla.'); else speakPiece(SPK.buf); }
+  SPK.buf = ''; SPK.ended = true; checkSpeechIdle();
+}
+function checkSpeechIdle(){
+  if (!SPK.ended || SPK.pend > 0) return;
+  if (SPK.any){ SPK.any = false; speaking = false; setState(wakeOn ? 'listening' : 'idle'); resumeRec(); if (followUp && SR){ followUp = false; paused = false; arm((+cfg.convSeg || 15) * 1000, true); startRec(); } }
+  if (SPK.wake){ const w = SPK.wake; SPK.wake = null; w(); }
+}
+function stopSpeaking(){ if ('speechSynthesis' in window) speechSynthesis.cancel(); SPK.capped = true; SPK.buf = ''; if (speaking) setTimeout(() => { if (speaking){ speaking = false; resumeRec(); setState(wakeOn ? 'listening' : 'idle'); } }, 400); }
 
 /* ================= Voz: entrada (reconocimiento) ================= */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2044,16 +2107,42 @@ function cleanContent(content){
   return out;
 }
 const WEB_TOOL = {type:'web_search_20250305', name:'web_search', max_uses:3};
-async function callClaude(model){
+async function callClaude(model, onText){
   const msgs = history.map(m => m);
   // marca de caché en el último mensaje: en las vueltas con herramientas se reutiliza la conversación
   if (msgs.length){ const last = msgs[msgs.length - 1]; const content = typeof last.content === 'string' ? [{type:'text', text:last.content}] : last.content.map(c => ({...c})); const k = content.length - 1; if (content[k] && ['text','tool_result','image','document'].includes(content[k].type)) content[k] = {...content[k], cache_control:{type:'ephemeral'}}; msgs[msgs.length - 1] = {...last, content}; }
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method:'POST',
     headers:{'content-type':'application/json', 'x-api-key':cfg.apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model, max_tokens:16000, system:await systemBlocks(), tools:cfg.web !== false ? [...tools, WEB_TOOL] : tools, messages:msgs})
+    body:JSON.stringify({model, max_tokens:16000, stream:!!onText, system:await systemBlocks(), tools:cfg.web !== false ? [...tools, WEB_TOOL] : tools, messages:msgs})
   });
-  if (r.ok){ const j = await r.json(); addUsage(model, j.usage).catch(() => {}); return j; }
+  if (r.ok && !onText){ const j = await r.json(); addUsage(model, j.usage).catch(() => {}); return j; }
+  if (r.ok){
+    // Lectura en vivo (SSE): el texto se muestra y se lee a medida que llega
+    const reader = r.body.getReader(), dec = new TextDecoder(), blocks = []; let pending = '', usage = {}, stop = null;
+    for (;;){
+      const {value, done} = await reader.read(); if (done) break;
+      pending += dec.decode(value, {stream:true});
+      let i;
+      while ((i = pending.indexOf('\n\n')) >= 0){
+        const chunk = pending.slice(0, i); pending = pending.slice(i + 2);
+        const line = chunk.split('\n').find(l => l.startsWith('data:')); if (!line) continue;
+        let d; try { d = JSON.parse(line.slice(5).trim()); } catch(_){ continue; }
+        if (d.type === 'message_start') usage = {...(d.message.usage || {})};
+        else if (d.type === 'content_block_start'){ const b = {...d.content_block}; if (b.type === 'tool_use' || b.type === 'server_tool_use'){ b._json = ''; } if (b.type === 'text') b.text = b.text || ''; blocks[d.index] = b; }
+        else if (d.type === 'content_block_delta'){
+          const b = blocks[d.index]; if (!b) continue;
+          if (d.delta.type === 'text_delta'){ b.text += d.delta.text; onText(d.delta.text); }
+          else if (d.delta.type === 'input_json_delta') b._json += d.delta.partial_json;
+        }
+        else if (d.type === 'content_block_stop'){ const b = blocks[d.index]; if (b && b._json !== undefined){ try { b.input = b._json ? JSON.parse(b._json) : {}; } catch(_){ b.input = {}; } delete b._json; } }
+        else if (d.type === 'message_delta'){ stop = d.delta.stop_reason; usage = {...usage, ...(d.usage || {})}; }
+        else if (d.type === 'error'){ const e = new Error((d.error && d.error.message) || 'Error en la respuesta'); e.status = d.error && d.error.type === 'overloaded_error' ? 529 : 500; throw e; }
+      }
+    }
+    addUsage(model, usage).catch(() => {});
+    return {content:blocks.filter(Boolean), stop_reason:stop, usage};
+  }
   let msg = ''; try { msg = (await r.json()).error.message || ''; } catch(_){}
   const e = new Error(msg); e.status = r.status; throw e;
 }
@@ -2068,7 +2157,7 @@ function friendly(e){
   return `Error ${e.status} de Claude: ${m || 'sin detalle'}`;
 }
 /* ================= Actividad, deshacer, confirmaciones y tareas largas ================= */
-let turnId = null, pendingConfirm = null, stopTask = false, planCard = null, maxSteps = 12;
+let lastLive = null, turnId = null, pendingConfirm = null, stopTask = false, planCard = null, maxSteps = 12;
 const TOOL_TXT = {eliminar:'Eliminó', crear_proyecto:'Creó el proyecto', actualizar_proyecto:'Actualizó el proyecto', agregar_tareas:'Agregó tareas a', actualizar_tarea:'Cambió una tarea de', crear_evento:'Agendó', modificar_evento:'Cambió el evento', crear_creacion:'Creó', modificar_creacion:'Reescribió', editar_creacion:'Editó', crear_nota:'Anotó', crear_kpi:'Creó el KPI', registrar_kpi:'Registró valor en', modificar_kpi:'Cambió el KPI', guardar_contacto:'Guardó el contacto', recordar:'Recordó', olvidar:'Olvidó', programar_publicacion:'Programó publicación'};
 const toolLabel = u => u.name === 'eliminar' ? `${u.input.tipo || ''} ${u.input.nombre || (u.input.todos ? '(todas/os)' : '')}`.trim() : u.input.titulo || u.input.nombre || u.input.proyecto || u.input.creacion || u.input.evento || u.input.kpi || u.input.texto || u.input.buscar || '';
 async function logActivity(u, ops){
@@ -2160,9 +2249,17 @@ async function askClaude(text, retried){ // text: texto o lista de bloques (con 
       if (stopTask){ history.push({role:'user', content:'(El usuario detuvo la tarea.)'}); history.push({role:'assistant', content:[{type:'text', text:'Tarea detenida.'}]}); if (planCard){ planCard.fin = true; planCard.detenida = true; renderPlan(); } return 'Detuve la tarea. Lo que alcancé a hacer quedó guardado y lo puedes deshacer con el botón de abajo.'; }
       if (step > 0) await checkTope();
       trimHistory();
-      let data = await callClaude(model);
+      let live = null, rafPending = false; lastLive = null;
+      const paint = () => { rafPending = false; if (live){ live.innerHTML = renderMD(live.dataset.raw); scrollLog(); } };
+      const onText = t => {
+        if (!live){ hideTyping(); live = addMsg('a', ''); live.classList.add('live'); live.dataset.raw = ''; setState('speaking'); }
+        live.dataset.raw += t; if (!rafPending){ rafPending = true; requestAnimationFrame(paint); }
+        streamSpeechFeed(t);
+      };
+      let data = await callClaude(model, onText);
       // si Haiku decide crear o reescribir un entregable, ese paso lo hace Sonnet para mejor calidad
-      if (cfg.model === 'auto' && model === 'claude-haiku-5-5' && (data.content || []).some(c => c.type === 'tool_use' && HEAVY_TOOLS.includes(c.name))){ model = 'claude-sonnet-5-5'; data = await callClaude(model); }
+      if (cfg.model === 'auto' && model === 'claude-haiku-5-5' && (data.content || []).some(c => c.type === 'tool_use' && HEAVY_TOOLS.includes(c.name))){ model = 'claude-sonnet-5-5'; if (live){ live.remove(); live = null; } data = await callClaude(model, onText); }
+      if (live){ streamSpeechFeed('\n'); paint(); live.classList.remove('live'); lastLive = live; if (!live.dataset.raw.trim()){ live.remove(); lastLive = null; } }
       const content = cleanContent(data.content);
       if (data.stop_reason === 'pause_turn'){ if (content.length) history.push({role:'assistant', content}); continue; } // búsqueda web larga: continuar
       const uses = data.stop_reason === 'tool_use' ? content.filter(c => c.type === 'tool_use') : [];
@@ -2192,7 +2289,7 @@ async function askClaude(text, retried){ // text: texto o lista de bloques (con 
         if (!['plan_de_trabajo','avance_plan'].includes(u.name)){ addMsg('s', '⚙ ' + u.name.replace(/_/g,' ') + (lbl ? ' · ' + String(lbl).slice(0, 60) : '')); showTyping(); }
         results.push({type:'tool_result', tool_use_id:u.id, content:JSON.stringify(out ?? {ok:true})});
       }
-      history.push({role:'user', content:results});
+      history.push({role:'user', content:results}); showTyping(); setState('thinking');
     }
     history.push({role:'assistant', content:[{type:'text', text:'Hice varias acciones.'}]});
     if (planCard){ planCard.fin = true; renderPlan(); }
@@ -2370,22 +2467,26 @@ async function handle(text){
   if (atts.length){ um.insertAdjacentHTML('afterbegin', `<div class="thumbs">${atts.map(a => a.thumb ? `<img src="${a.thumb}" alt="">` : `<span class="fn">📎 ${esc(a.name)}</span>`).join('')}</div>`); pendingAtts = []; renderAtts(); }
   showTyping(); setState('thinking', 'Pensando…'); vStatus('Pensando…');
   const t0 = Date.now(), tick = setInterval(() => { const s = Math.round((Date.now() - t0) / 1000); if (s >= 3){ hint.textContent = `Pensando… ${s} s`; if (vCur && /^Pensando|^⚙/.test($('vMsg').textContent)) vStatus(`Pensando… ${s} s`); } }, 1000);
-  let reply;
+  let reply; lastLive = null; streamSpeechStart();
   try {
     if (atts.length && !cfg.apiKey) throw new Error('Para analizar fotos y archivos necesito tu API key en Ajustes.');
     reply = cfg.apiKey ? await askClaude(atts.length ? [...attBlocks(atts), {type:'text', text}] : text) : await localCommand(text);
   }
   catch(err){
     const msg = err.message || 'Algo falló.';
-    clearInterval(tick); addMsg('e', msg); busy = false;
+    clearInterval(tick); addMsg('e', msg); busy = false; SPK.on = false; SPK.ended = true; checkSpeechIdle();
     setState(wakeOn ? 'listening' : 'idle', 'Algo falló'); await speak(msg); return;
   }
   clearInterval(tick); busy = false;
   hideTyping();
   const myTurn = turnId, nAct = myTurn ? (await dbAll('actividad')).filter(e => e.turno === myTurn && !e.deshecho).length : 0;
-  if (reply){ addMsg('a', reply, {animate:true});
+  const streamed = lastLive && lastLive.isConnected;
+  if (reply){ if (streamed){ lastLive.dataset.raw = reply; lastLive.innerHTML = renderMD(reply); lastLive.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; }); } else addMsg('a', reply, {animate:true});
     if (nAct){ const u = document.createElement('button'); u.className = 'chipbtn'; u.style.alignSelf = 'flex-start'; u.textContent = `↩ Deshacer ${nAct === 1 ? 'el cambio' : 'los ' + nAct + ' cambios'} de esta respuesta`;
-      u.onclick = async () => { const k = await undoTurn(myTurn); u.textContent = k ? '✓ Deshecho' : 'Ya estaba deshecho'; u.disabled = true; }; log.appendChild(u); scrollLog(); } hint.textContent = ''; if (vCur) $('vMsg').textContent = reply.split('\n')[0].slice(0, 220); followUp = !endConv && (cfg.followUp === 'siempre' || (cfg.followUp !== 'nunca' && /\?\s*$/.test(reply.trim()))); await speak(reply); }
+      u.onclick = async () => { const k = await undoTurn(myTurn); u.textContent = k ? '✓ Deshecho' : 'Ya estaba deshecho'; u.disabled = true; }; log.appendChild(u); scrollLog(); } hint.textContent = ''; if (vCur) $('vMsg').textContent = reply.split('\n')[0].slice(0, 220); followUp = !endConv && (cfg.followUp === 'siempre' || (cfg.followUp !== 'nunca' && /\?\s*$/.test(reply.trim())));
+    if (SPK.on && (SPK.any || SPK.chars || SPK.pend)){ streamSpeechEnd(); await SPK.idle; }
+    else { SPK.on = false; await speak(reply); } }
+  else { SPK.on = false; }
   if (wakeOn) startRec();
   if (!speaking && !armed) setState(wakeOn ? 'listening' : 'idle', wakeOn ? `Di «${cfg.wake}» cuando me necesites` : 'Toca el orbe para hablar');
   kvSet('chatlog', [...log.querySelectorAll('.msg.u,.msg.a')].slice(-40).map(d => ({r:d.classList.contains('u') ? 'u' : 'a', t:d.dataset.raw || (d.querySelector('.thumbs') ? '📎 ' : '') + [...d.childNodes].filter(x => x.nodeType === 3).map(x => x.textContent).join('')})));
@@ -2606,7 +2707,7 @@ async function syncNow(manual){
       const {data, sha} = await pullRemote();
       let changedLocal = false, changedRemote = !data;
       if (data){ ({changedLocal, changedRemote} = await mergeRemote(data)); }
-      if (changedLocal){ refreshUI(); if (vCur) openViewer(vCur); }
+      if (changedLocal){ refreshUI(); scheduleDash(); if (vCur) openViewer(vCur); }
       if (!changedRemote){ syncSha = sha; break; }
       const snap = await localSnapshot();
       const put = await gh(SYNC_FILE, {method:'PUT', body:JSON.stringify({message:'KAI: sincronización', content:b64enc(JSON.stringify(snap)), ...(sha ? {sha} : {})})});
@@ -2812,6 +2913,46 @@ $('linkScan').addEventListener('change', async e => {
   } catch(err){ syncStatus(err.message, true); addMsg('e', err.message); }
 });
 
+/* ================= Centro de mando ================= */
+let dashT = null;
+function scheduleDash(){ clearTimeout(dashT); dashT = setTimeout(() => renderDash().catch(() => {}), 700); }
+async function renderDash(){
+  const el = $('dash'); if (!el || el.hidden) return;
+  const h = hoy(), nowHM = new Date().toTimeString().slice(0, 5);
+  const [evs, projs, ks, regs, ruts, notas] = await Promise.all([allEv(), allProj(), allKpi(), dbAll('kpireg'), allRut(), dbAll('notas')]);
+  const cards = [];
+  // Agenda de hoy
+  const evH = evs.filter(e => e.fecha === h), next = evH.find(e => !e.hora_inicio || e.hora_inicio >= nowHM) || null;
+  const nextDay = !evH.length ? evs.find(e => e.fecha > h) : null;
+  cards.push({k:'agenda', acc:'#46dcff', l:['Agenda', evH.length ? `${evH.length} hoy` : ''], v:next ? `${next.hora_inicio || 'Hoy'} ${next.titulo}` : evH.length ? 'Sin más eventos' : 'Día libre', s:next && next.lugar ? next.lugar : nextDay ? `Próximo: ${fmtD(nextDay.fecha)} ${nextDay.titulo}` : ''});
+  // Tareas
+  let venc = 0, hoyT = 0, act = 0, sumAv = 0;
+  for (const p of projs){ if (p.estado !== 'activo') continue; act++; sumAv += avance(p); for (const t of p.tareas){ if (t.hecha || !t.fecha) continue; if (t.fecha < h) venc++; else if (t.fecha === h) hoyT++; } }
+  cards.push({k:'tareas', acc:venc ? '#ff6b6b' : hoyT ? '#ffb347' : '#4ade80', l:['Tareas', ''], v:venc ? `${venc} vencida${venc > 1 ? 's' : ''}` : hoyT ? `${hoyT} para hoy` : 'Al día ✓', s:venc && hoyT ? `${hoyT} para hoy` : ''});
+  // KPIs
+  if (ks.length){
+    let ok = 0, warn = 0, bad = 0, pend = 0;
+    for (const k of ks){ const st = kStats(k, regs.filter(r => r.kpi === k.id).sort((a, b) => a.fecha.localeCompare(b.fecha))); if (st.estado === 'ok') ok++; else if (st.estado === 'warn') warn++; else if (st.estado === 'bad') bad++; if (st.pendiente) pend++; }
+    cards.push({k:'kpis', acc:bad ? '#ff6b6b' : warn ? '#ffb347' : '#4ade80', l:['KPIs', pend ? `${pend} por registrar` : ''], html:`<span class="kd"><i style="color:var(--ok)">● ${ok}</i><i style="color:var(--warn)">● ${warn}</i><i style="color:var(--bad)">● ${bad}</i></span>`, s:bad ? 'Hay indicadores fuera de meta' : 'En meta o cerca'});
+  }
+  // Proyectos
+  if (act) cards.push({k:'proyectos', acc:'#a78bfa', l:['Proyectos', `${act} activos`], v:`${Math.round(sumAv / act)}% avance`, bar:sumAv / act});
+  // Próxima rutina
+  const dk = ['dom','lun','mar','mie','jue','vie','sab'][new Date().getDay()];
+  const rutHoy = ruts.filter(x => x.activa !== false && (!x.dias || !x.dias.length || x.dias.includes(dk)) && x.hora > nowHM);
+  if (ruts.length) cards.push({k:'ajustes', acc:'#46dcff', l:['Rutinas', `${ruts.filter(x => x.activa !== false).length} activas`], v:rutHoy[0] ? `${rutHoy[0].hora} ${rutHoy[0].nombre}` : 'Nada más hoy', s:cfg.pushOn ? 'Notificaciones activas' : 'Activa notificaciones'});
+  // Notas
+  if (notas.length){ const last = notas.sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; cards.push({k:'notas', acc:'#8aa4bf', l:['Notas', `${notas.length}`], v:last.texto, s:fmtD(last.fecha.slice(0, 10))}); }
+  // Gasto
+  if (cfg.apiKey){ const u = await usoMes(), tope = +cfg.tope || 0, pct = tope ? u.usd / tope * 100 : 0; cards.push({k:'ajustes', acc:pct >= 80 ? '#ffb347' : '#46dcff', l:['Gasto Claude', tope ? Math.round(pct) + '%' : ''], v:usd(u.usd), s:`${u.consultas} consultas este mes`, bar:tope ? Math.min(100, pct) : null}); }
+  el.innerHTML = cards.map((c, i) => `<button class="dcard" data-go="${c.k}" style="--acc:${c.acc};animation-delay:${i * 40}ms"><div class="dl"><span>${esc(c.l[0])}</span><span>${esc(c.l[1] || '')}</span></div>
+    ${c.html ? `<div class="dv">${c.html}</div>` : `<div class="dv" title="${esc(c.v)}">${esc(c.v)}</div>`}${c.s ? `<div class="ds">${esc(c.s)}</div>` : ''}${c.bar !== undefined && c.bar !== null ? `<div class="dbar"><span style="width:${Math.round(c.bar)}%"></span></div>` : ''}</button>`).join('');
+}
+$('dash').addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (!b) return; const v = b.dataset.go; goView(v === 'tareas' ? 'agenda' : v); });
+$('dashBtn').addEventListener('click', async () => { cfg.dash = cfg.dash === false; await kvSet('cfg', cfg); $('dash').hidden = cfg.dash === false; $('dashBtn').classList.toggle('on', cfg.dash !== false); renderDash(); });
+setInterval(() => { if (document.visibilityState === 'visible') renderDash().catch(() => {}); }, 60000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleDash(); });
+
 /* ================= Instalación como app ================= */
 let installEvt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('instBtn').hidden = false; });
@@ -2841,6 +2982,7 @@ async function checkFiles(){
   if (cfg.autoWake && SR) toggleWake(true); else updateWakeBtn();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
   checkFiles(); setTimeout(checkReminders, 3000); fillSync();
+  $('dash').hidden = cfg.dash === false; $('dashBtn').classList.toggle('on', cfg.dash !== false); renderDash().catch(() => {});
   if (/^#(rutina|vista)=/.test(location.hash)) abrirDesdeAviso(location.hash);
   if (location.hash.startsWith('#vincular=')){
     const code = location.hash.slice(10); window.history.replaceState(null, '', location.pathname); // la llave no queda en la barra ni en el historial

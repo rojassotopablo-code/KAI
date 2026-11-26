@@ -56,6 +56,13 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v5.3 — Respuestas en tiempo real y centro de mando
+- **Streaming:** el texto aparece mientras Claude lo escribe y KAI empieza a hablar con la primera frase (antes esperaba la respuesta completa). En respuestas largas lee unos 320 caracteres y dice «El detalle está en pantalla».
+- **Centro de mando** bajo el orbe: tarjetas deslizables con agenda de hoy, tareas vencidas o para hoy, semáforo de KPIs, avance de proyectos, próxima rutina, última nota y gasto del mes. Se actualizan solas y al tocarlas abren la sección. Botón ▦ arriba para mostrarlo u ocultarlo.
+
+## Cambios v5.2
+- Eliminar cualquier cosa por voz (proyectos, tareas, eventos, notas, creaciones, KPIs, contactos, rutinas) con confirmación y deshacer.
+
 ## Cambios v5.0 — Servidor de KAI: notificaciones y rutinas
 - **Servidor propio en Cloudflare (gratis):** revisa tus datos cada 5 minutos y te avisa **aunque KAI esté cerrado**. No guarda nada propio (todo sigue en tu repositorio privado `kai-datos`) y no necesita tu API key de Claude.
 - **Notificaciones reales** en el celular y el PC: recordatorios de eventos, publicaciones programadas, resumen del día y alertas.
