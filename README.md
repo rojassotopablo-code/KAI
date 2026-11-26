@@ -56,6 +56,12 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v3.3
+- **Conversación continua:** toca el orbe una vez (o di «KAI») y conversa de corrido. Después de cada respuesta KAI sigue escuchando sin que repitas su nombre. Termina cuando dices «gracias», «eso es todo» o «chao», o tras 15 segundos de silencio (se ajusta en Ajustes).
+- **Navegación por voz:** «abre la agenda», «muéstrame los proyectos», «ve a creaciones», «vuelve al inicio», «cierra». Las órdenes cortas se ejecutan al instante; las más complejas («muéstrame la reunión del viernes») las resuelve Claude.
+- KAI ya no inventa un calendario aparte: usa la agenda propia de la app.
+- **Bip en Android:** la escucha continua con «KAI» se pausa sola tras 3 minutos sin voz. La forma recomendada en el celular es tocar el orbe y conversar.
+
 ## Cambios v3.2
 - Corregido: KAI podía quedarse "escuchando" sin ejecutar nada cuando el navegador no avisaba que había terminado de hablar. Ahora se libera solo.
 - Con una creación abierta, abajo se ve lo que KAI escucha, lo que está haciendo (con segundos transcurridos) y cualquier error.

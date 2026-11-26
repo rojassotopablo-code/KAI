@@ -283,11 +283,13 @@ a{color:var(--cy)}
 
       <label for="followUp">Modo conversación (seguir escuchando después de responder)</label>
       <select class="f" id="followUp">
+        <option value="siempre">Siempre: conversar sin repetir «KAI» (recomendado)</option>
         <option value="pregunta">Solo cuando KAI me hace una pregunta</option>
-        <option value="siempre">Siempre (responder sin repetir «KAI»)</option>
         <option value="nunca">Nunca</option>
       </select>
-      <p class="note">En el celular, la escucha continua mantiene la pantalla encendida y Android puede sonar un «bip» cada vez que reinicia el micrófono. Si te molesta, usa el botón del orbe con el modo conversación en «Siempre».</p>
+      <label for="convSeg">Tiempo esperando tu respuesta: <span id="convV">15</span> s</label>
+      <input id="convSeg" type="range" min="5" max="40" step="5" style="width:100%">
+      <p class="note">Forma recomendada en el celular: toca el orbe una vez y conversa de corrido; KAI sigue escuchando después de cada respuesta hasta que digas «gracias» o te quedes en silencio. La escucha continua con «KAI» hace sonar un «bip» en Android cada vez que reinicia el micrófono; para no molestar, se pausa sola tras 3 minutos sin voz. Ese bip se puede bajar con el volumen de sonidos del sistema/notificaciones del teléfono.</p>
 
       <label class="chk"><input type="checkbox" id="web"> Permitir búsquedas en internet (información actual)</label>
       <label class="chk"><input type="checkbox" id="mute"> Silenciar respuestas habladas</label>
@@ -305,7 +307,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v3.2 · Fase 3</p>
+      <p class="note" id="ver">KAI v3.3 · Fase 3</p>
     </div>
   </div>
 </div>
@@ -349,13 +351,14 @@ const kvGet = async (k, d) => { const q = tx('kv').get(k); return new Promise(r 
 const kvSet = (k, v) => dbPut('kv', {id:k, v});
 
 /* ================= Configuración ================= */
-const cfg = {web:true, pausa:1.5, wakeAlt:[], followUp:'pregunta', apiKey:'', model:'claude-sonnet-5-5', about:'', wake:'kai', voice:'', rate:1.1, mute:false, autoWake:false};
+const cfg = {convSeg:15, web:true, pausa:1.5, wakeAlt:[], followUp:'siempre', apiKey:'', model:'claude-sonnet-5-5', about:'', wake:'kai', voice:'', rate:1.1, mute:false, autoWake:false};
 async function loadCfg(){ Object.assign(cfg, await kvGet('cfg', {})); if (norm(cfg.wake) === 'jarvis') cfg.wake = 'kai';
-  if (!cfg.v3){ cfg.v3 = true; if (+cfg.pausa === 2) cfg.pausa = 1.5; if (+cfg.rate === 1) cfg.rate = 1.1; if (cfg.web === undefined) cfg.web = true; } }
+  if (!cfg.v3){ cfg.v3 = true; if (+cfg.pausa === 2) cfg.pausa = 1.5; if (+cfg.rate === 1) cfg.rate = 1.1; if (cfg.web === undefined) cfg.web = true; }
+  if (!cfg.v33){ cfg.v33 = true; if (cfg.followUp === 'pregunta') cfg.followUp = 'siempre'; } }
 function fillCfg(){
   $('apiKey').value = cfg.apiKey; $('model').value = cfg.model; $('about').value = cfg.about;
   $('wake').value = cfg.wake; $('rate').value = cfg.rate; $('rateV').textContent = (+cfg.rate).toFixed(1);
-  $('mute').checked = cfg.mute; $('followUp').value = cfg.followUp || 'pregunta'; $('pausa').value = cfg.pausa || 2; $('pausaV').textContent = (+cfg.pausa || 2).toFixed(1); renderAlt(); $('autoWake').checked = cfg.autoWake; $('web').checked = cfg.web !== false;
+  $('mute').checked = cfg.mute; $('followUp').value = cfg.followUp || 'pregunta'; $('convSeg').value = cfg.convSeg || 15; $('convV').textContent = cfg.convSeg || 15; $('pausa').value = cfg.pausa || 2; $('pausaV').textContent = (+cfg.pausa || 2).toFixed(1); renderAlt(); $('autoWake').checked = cfg.autoWake; $('web').checked = cfg.web !== false;
 }
 
 /* ================= UI ================= */
@@ -453,7 +456,7 @@ function loadVoices(){
 if ('speechSynthesis' in window){ loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
 
 const clean = t => String(t).replace(/```[\s\S]*?```/g,' (código en pantalla) ').replace(/[*_#`>|]/g,'').replace(/\[(.*?)\]\(.*?\)/g,'$1').replace(/\s+/g,' ').trim();
-let speaking = false, followUp = false;
+let speaking = false, followUp = false, endConv = false;
 function speak(text){
   return new Promise(res => {
     if (cfg.mute || !('speechSynthesis' in window) || !text){ res(); return; }
@@ -473,7 +476,7 @@ function speak(text){
     let finished = false;
     // Seguro: si el navegador nunca avisa que terminó de hablar, KAI se libera solo
     const guard = setTimeout(() => { try { speechSynthesis.cancel(); } catch(_){} done(); }, 4000 + say.length * 110 / (+cfg.rate || 1));
-    const done = () => { if (finished) return; finished = true; clearTimeout(guard); speaking = false; setState(wakeOn ? 'listening' : 'idle'); resumeRec(); if (followUp && SR){ followUp = false; arm(); startRec(); } res(); };
+    const done = () => { if (finished) return; finished = true; clearTimeout(guard); speaking = false; setState(wakeOn ? 'listening' : 'idle'); resumeRec(); if (followUp && SR){ followUp = false; paused = false; arm((+cfg.convSeg || 15) * 1000, true); startRec(); } res(); };
     u.onend = done; u.onerror = done;
     setTimeout(() => speechSynthesis.speak(u), 60); // pausa corta tras cancel(): Chrome a veces descarta lo que se pide justo después
   });
@@ -484,7 +487,7 @@ function stopSpeaking(){ if ('speechSynthesis' in window) speechSynthesis.cancel
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, wakeOn = false, armed = false, armTimer = null, recRunning = false, paused = false, busy = false;
 const isAndroid = /Android/i.test(navigator.userAgent);
-let lastStart = 0, quickEnds = 0, gotResult = false, wakeLock = null, netWarned = false;
+let lastStart = 0, quickEnds = 0, gotResult = false, lastVoice = Date.now(), wakeLock = null, netWarned = false;
 // Captura de instrucción: acumula lo que dices hasta que haces silencio
 let buf = '', pend = '', heardAny = false, silTimer = null, training = null;
 
@@ -508,12 +511,12 @@ function findWake(text){
 const pausaMs = () => (+cfg.pausa || 2) * 1000;
 function vStatus(t, err){ const m = $('vMsg'); if (!m || !vCur) return; m.textContent = t || ''; m.style.color = err ? 'var(--bad)' : ''; }
 function showCapture(){ vStatus('🎙 ' + ((buf + ' ' + pend).trim() || 'Te escucho…')); hint.innerHTML = `<span class="heard">${esc((buf + ' ' + pend).trim() || 'Te escucho…')}</span>`; }
-function arm(){
+function arm(ms = 9000, quiet){
   armed = true; buf = ''; pend = ''; heardAny = false;
-  setState('armed', 'Te escucho…');
-  if (navigator.vibrate) try { navigator.vibrate(40); } catch(_){}
+  setState('armed', quiet ? 'Sigo escuchando… (di «gracias» para terminar)' : 'Te escucho…');
+  if (!quiet && navigator.vibrate) try { navigator.vibrate(40); } catch(_){}
   clearTimeout(armTimer); clearTimeout(silTimer);
-  armTimer = setTimeout(() => { if (armed && !heardAny) disarm(); }, 9000); // nadie habló
+  armTimer = setTimeout(() => { if (armed && !heardAny) disarm(); }, ms); // nadie habló: termina la conversación
 }
 function disarm(){
   armed = false; buf = ''; pend = ''; clearTimeout(armTimer); clearTimeout(silTimer);
@@ -542,7 +545,7 @@ function initRec(){
   rec.continuous = !isAndroid; rec.interimResults = true; rec.maxAlternatives = 1;
   rec.onstart = () => { recRunning = true; lastStart = Date.now(); gotResult = false; };
   rec.onresult = e => {
-    let fin = [], interim = ''; gotResult = true;
+    let fin = [], interim = ''; gotResult = true; lastVoice = Date.now();
     for (let i = e.resultIndex; i < e.results.length; i++){
       const r = e.results[i];
       if (r.isFinal) fin.push(r[0].transcript); else interim += r[0].transcript;
@@ -581,6 +584,10 @@ function initRec(){
     // lo que quedó a medio reconocer al cortarse la sesión se guarda
     if (armed && pend){ buf = (buf + ' ' + pend).trim(); pend = ''; }
     if (!(wakeOn || armed || training) || paused) return;
+    // En Android cada reinicio del micrófono suena «bip»: tras unos minutos sin voz la escucha continua se duerme
+    if (isAndroid && wakeOn && !armed && !training && Date.now() - lastVoice > (+cfg.dormir || 3) * 60000){
+      wakeOn = false; keepAwake(false); updateWakeBtn(); setState('idle', 'Escucha en pausa para evitar el bip. Toca el orbe para hablar.'); return;
+    }
     // solo se frena si el micrófono se corta una y otra vez sin oír nada (evita un bucle de bips)
     quickEnds = !gotResult && Date.now() - lastStart < 1000 ? quickEnds + 1 : 0;
     if (quickEnds > 4) setTimeout(startRec, 1200); else startRec(); // reinicio inmediato para no perder palabras
@@ -814,6 +821,10 @@ const actions = {
     await dbPut('eventos', e); refreshUI();
     return {ok:true, evento:evOut(e)};
   },
+  async navegar({vista, fecha, proyecto, creacion}){
+    const ok = await goView(vista, {fecha, proyecto, creacion});
+    return ok ? {ok:true, vista} : {error:'Vista no encontrada'};
+  },
   async listar_notas({limite = 10} = {}){
     const all = (await dbAll('notas')).sort((a,b) => b.fecha.localeCompare(a.fecha)).slice(0, limite);
     return {notas: all.map(n => ({texto:n.texto, etiqueta:n.etiqueta, fecha:n.fecha.slice(0,10)}))};
@@ -839,6 +850,7 @@ const tools = [
   {name:'crear_evento', description:'Agenda un evento en el calendario (reunión, cita, turno, visita, recordatorio con hora).', input_schema:S({titulo:{type:'string'}, fecha:{type:'string', description:'AAAA-MM-DD'}, hora_inicio:{type:'string', description:'HH:MM 24 h'}, hora_fin:{type:'string'}, lugar:{type:'string'}, notas:{type:'string'}, recordatorio_min:{type:'number', description:'Minutos antes para avisar, por defecto 15'}}, ['titulo','fecha'])},
   {name:'listar_eventos', description:'Eventos del calendario entre dos fechas (por defecto los próximos 7 días).', input_schema:S({desde:{type:'string'}, hasta:{type:'string'}})},
   {name:'modificar_evento', description:'Cambia o elimina un evento del calendario.', input_schema:S({evento:{type:'string', description:'Título aproximado'}, fecha_actual:{type:'string'}, titulo:{type:'string'}, fecha:{type:'string'}, hora_inicio:{type:'string'}, hora_fin:{type:'string'}, lugar:{type:'string'}, notas:{type:'string'}, recordatorio_min:{type:'number'}, eliminar:{type:'boolean'}}, ['evento'])},
+  {name:'navegar', description:'Cambia lo que se ve en pantalla: inicio (cierra todo y vuelve a la conversación), agenda (calendario propio de la app; con fecha abre ese día), proyectos (con proyecto abre su ficha), creaciones, creacion (abre la indicada), notas, ajustes.', input_schema:S({vista:{type:'string', enum:['inicio','agenda','proyectos','creaciones','creacion','notas','ajustes']}, fecha:{type:'string'}, proyecto:{type:'string'}, creacion:{type:'string'}}, ['vista'])},
   {name:'crear_nota', description:'Guarda una nota o recordatorio suelto, no asociado a un proyecto.', input_schema:S({texto:{type:'string'}, etiqueta:{type:'string'}}, ['texto'])},
   {name:'listar_notas', description:'Lee las notas más recientes.', input_schema:S({limite:{type:'number'}})}
 ];
@@ -1064,6 +1076,7 @@ Cómo responder:
 - Apps: un único archivo HTML completo, autocontenido, responsive, en español, con buen diseño; puede usar librerías de cdnjs o jsdelivr. Debe funcionar sola, sin servidor.
 - Presentaciones: Markdown con diapositivas separadas por una línea con ---, títulos claros y pocas viñetas por diapositiva.
 - Proyectos: para "arma un plan" crea el proyecto con 6 a 15 tareas con fechas y prioridad. Agenda: reuniones y citas con hora van al calendario con crear_evento; trabajos con plazo son tareas de un proyecto.
+- La app ya tiene su propia agenda-calendario, proyectos, creaciones y notas: para mostrarlos usa navegar. Nunca construyas un calendario o agenda como creación salvo que pidan expresamente una app aparte. Para volver a la pantalla principal usa navegar con vista inicio.
 - Usa las herramientas sin pedir permiso. Si no encuentras algo, lista antes de rendirte. Para "qué tengo hoy" usa resumen_pendientes.
 - Si necesitas información actual (noticias, precios, normativa vigente, datos recientes) y tienes búsqueda web, úsala.
 ${openCreaHint()}${cfg.about ? '\nContexto del usuario: ' + cfg.about : ''}`;
@@ -1202,11 +1215,37 @@ async function localCommand(t){
   return 'Para conversar libremente y armar planes necesito tu API key en Ajustes. Mientras tanto puedo crear proyectos, agregar y completar tareas, anotar y decirte qué tienes pendiente.';
 }
 
+/* ================= Navegación ================= */
+const VISTAS = {proyectos:'pProy', agenda:'pAgenda', calendario:'pAgenda', creaciones:'pCrea', documentos:'pCrea', notas:'pNotas', ajustes:'pAj', configuracion:'pAj'};
+async function goView(v, extra = {}){
+  v = norm(v || 'inicio');
+  if (v === 'inicio' || v === 'principal' || v === 'conversacion'){ closeViewer(); $('drawer').classList.remove('open'); return true; }
+  if (v === 'creacion' && extra.creacion){ const c = await findCrea(extra.creacion); if (c){ openViewer(c.id); return true; } return false; }
+  const pane = VISTAS[v]; if (!pane) return false;
+  if (pane === 'pAgenda' && validDate(extra.fecha)){ calSel = extra.fecha; calMonth = calSel.slice(0,7); }
+  if (pane === 'pProy' && extra.proyecto){ const p = await findProject(extra.proyecto); if (p){ curProj = p.id; openTask = null; } }
+  closeViewer(); $('drawer').classList.add('open'); showTab(pane); refreshUI();
+  return true;
+}
+// Órdenes cortas de navegación se resuelven al instante, sin consultar a Claude
+async function quickNav(text){
+  const n = norm(text); if (n.split(' ').length > 7) return false;
+  let m = n.match(/^(?:abre|abrir|ve a|vamos a|anda a|ir a|muestrame|muestra|mostrar|ensename|ver)\s+(?:la |las |los |el |mis |mi )?(agenda|calendario|proyectos|creaciones|documentos|notas|ajustes|configuracion)\b/);
+  if (m){ await goView(m[1]); const t = 'Listo.'; addMsg('u', text); addMsg('a', t); followUp = cfg.followUp === 'siempre'; await speak(t); return true; }
+  if (/^(vuelve|volver|regresa|regresar|cierra|cerrar|atras|inicio|pantalla principal|ve al inicio|vuelve al inicio|vuelve a la pantalla principal|cierra eso|cierra la creacion)$/.test(n)){
+    await goView('inicio'); const t = 'Listo.'; addMsg('u', text); addMsg('a', t); followUp = cfg.followUp === 'siempre'; await speak(t); return true;
+  }
+  return false;
+}
+
 /* ================= Flujo principal ================= */
 async function handle(text){
   text = String(text).trim(); if (!text || busy) return;
   const n = norm(text);
   if (/^(silencio|para|detente|calla|callate|stop)$/.test(n)){ stopSpeaking(); return; }
+  endConv = /^(gracias|muchas gracias|eso es todo|eso seria todo|nada mas|listo gracias|chao|adios|hasta luego|terminamos|ya esta|ok gracias)( kai)?$/.test(n);
+  if (endConv){ addMsg('u', text); const bye = 'De nada. Aquí estaré.'; addMsg('a', bye); disarm(); await speak(bye); return; }
+  if (await quickNav(text)) return;
   if (!wakeOn) stopRec();
   busy = true; addMsg('u', text); showTyping(); setState('thinking', 'Pensando…'); vStatus('Pensando…');
   const t0 = Date.now(), tick = setInterval(() => { const s = Math.round((Date.now() - t0) / 1000); if (s >= 3){ hint.textContent = `Pensando… ${s} s`; if (vCur && /^Pensando|^⚙/.test($('vMsg').textContent)) vStatus(`Pensando… ${s} s`); } }, 1000);
@@ -1219,9 +1258,9 @@ async function handle(text){
   }
   clearInterval(tick); busy = false;
   hideTyping();
-  if (reply){ addMsg('a', reply, {animate:true}); hint.textContent = ''; if (vCur) $('vMsg').textContent = reply.split('\n')[0].slice(0, 220); followUp = cfg.followUp === 'siempre' || (cfg.followUp !== 'nunca' && /\?\s*$/.test(reply.trim())); await speak(reply); }
+  if (reply){ addMsg('a', reply, {animate:true}); hint.textContent = ''; if (vCur) $('vMsg').textContent = reply.split('\n')[0].slice(0, 220); followUp = !endConv && (cfg.followUp === 'siempre' || (cfg.followUp !== 'nunca' && /\?\s*$/.test(reply.trim()))); await speak(reply); }
   if (wakeOn) startRec();
-  if (!speaking) setState(wakeOn ? 'listening' : 'idle', wakeOn ? `Di «${cfg.wake}» cuando me necesites` : 'Toca el orbe para hablar');
+  if (!speaking && !armed) setState(wakeOn ? 'listening' : 'idle', wakeOn ? `Di «${cfg.wake}» cuando me necesites` : 'Toca el orbe para hablar');
   kvSet('chatlog', [...log.querySelectorAll('.msg.u,.msg.a')].slice(-40).map(d => ({r:d.classList.contains('u') ? 'u' : 'a', t:d.dataset.raw || d.textContent})));
 }
 
@@ -1337,13 +1376,14 @@ async function checkReminders(){
   }
 }
 setInterval(checkReminders, 30000);
+$('convSeg').addEventListener('input', e => $('convV').textContent = e.target.value);
 $('pausa').addEventListener('input', e => $('pausaV').textContent = (+e.target.value).toFixed(1));
 $('trainBtn').addEventListener('click', () => training ? finishTraining() : startTraining());
 $('altClr').addEventListener('click', async () => { cfg.wakeAlt = []; await kvSet('cfg', cfg); renderAlt(); });
 $('rate').addEventListener('input', e => $('rateV').textContent = (+e.target.value).toFixed(1));
 $('saveCfg').addEventListener('click', async () => {
   Object.assign(cfg, {apiKey:$('apiKey').value.trim(), model:$('model').value, about:$('about').value.trim(),
-    wake:$('wake').value.trim() || 'kai', voice:$('voice').value, rate:+$('rate').value, mute:$('mute').checked, web:$('web').checked, followUp:$('followUp').value, pausa:+$('pausa').value, autoWake:$('autoWake').checked});
+    wake:$('wake').value.trim() || 'kai', voice:$('voice').value, rate:+$('rate').value, mute:$('mute').checked, web:$('web').checked, followUp:$('followUp').value, pausa:+$('pausa').value, convSeg:+$('convSeg').value, autoWake:$('autoWake').checked});
   await kvSet('cfg', cfg);
   $('saveCfg').textContent = 'Guardado ✓'; setTimeout(() => $('saveCfg').textContent = 'Guardar', 1500);
   updateWakeBtn();
