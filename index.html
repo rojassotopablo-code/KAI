@@ -208,6 +208,16 @@ a{color:var(--cy)}
 .ev .hr{width:52px;flex:none;font-size:14px;color:var(--cy);white-space:nowrap}
 .ev .hr.k{color:var(--warn)}
 .ev .b{flex:1}
+/* Envíos */
+.sendcard{align-self:stretch;background:var(--panel);border:1px solid #46dcff55;border-radius:14px;padding:12px}
+.sendcard .sh{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:6px}
+.sendcard .sh i{font-style:normal;font-size:12px;padding:2px 8px;border-radius:99px;background:#0a1422;color:var(--cy)}
+.sendcard .to{font-size:13px;color:var(--mute);margin-bottom:6px;overflow-wrap:anywhere}
+.sendcard textarea{width:100%;min-height:110px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:10px;font:inherit;font-size:15px;resize:vertical}
+.sendcard input{width:100%;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 10px;font:inherit;font-size:15px;margin-bottom:6px}
+.sendcard .att{margin:6px 0 0;height:44px}
+.sendcard .row{margin-top:8px}
+.sendcard .done{color:var(--ok);font-size:13px;margin-top:6px}
 /* KPIs */
 .kgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
 .kcard{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--mute);border-radius:12px;padding:12px;cursor:pointer;text-align:left;color:var(--ink);font:inherit}
@@ -284,6 +294,15 @@ a{color:var(--cy)}
     <div class="pane" id="pNotas">
       <h2>Notas</h2>
       <div id="notaList"></div>
+      <h2 style="margin-top:24px">Contactos</h2>
+      <p class="note" style="margin-top:-6px">Para que KAI prepare envíos: «mándale el informe a Juan por WhatsApp».</p>
+      <div id="contList"></div>
+      <div class="card" style="margin-top:10px">
+        <input class="f sm" id="cNom" placeholder="Nombre">
+        <div class="grid2"><div><label>Correo</label><input class="f sm" id="cMail" type="email" placeholder="nombre@empresa.cl"></div><div><label>WhatsApp</label><input class="f sm" id="cTel" type="tel" placeholder="+56 9 1234 5678"></div></div>
+        <label>Cargo / empresa (opcional)</label><input class="f sm" id="cCargo">
+        <div class="row"><button class="btn p sm" id="cAdd" type="button">Guardar contacto</button></div>
+      </div>
     </div>
 
     <div class="pane" id="pAj">
@@ -377,7 +396,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v4.0 · Fase 4</p>
+      <p class="note" id="ver">KAI v4.1 · Fase 5</p>
     </div>
   </div>
 </div>
@@ -405,10 +424,10 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6
 let db;
 function openDB(){
   return new Promise((res, rej) => {
-    const r = indexedDB.open('jarvis', 4);
+    const r = indexedDB.open('jarvis', 5);
     r.onupgradeneeded = () => {
       const d = r.result;
-      ['proyectos','notas','kv','creaciones','eventos','borrados','kpis','kpireg'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
+      ['proyectos','notas','kv','creaciones','eventos','borrados','kpis','kpireg','contactos'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -419,7 +438,7 @@ const dbAll = store => new Promise(r => { const q = tx(store).getAll(); q.onsucc
 const dbPutRaw = (store, v) => new Promise(r => { const q = tx(store,'readwrite').put(v); q.onsuccess = () => r(v); q.onerror = () => r(null); });
 const dbDelRaw = (store, id) => new Promise(r => { const q = tx(store,'readwrite').delete(id); q.onsuccess = q.onerror = () => r(); });
 // Los datos que se sincronizan llevan la hora de su último cambio; los borrados dejan una marca para borrarse también en el otro dispositivo
-const SYNCED = ['proyectos','notas','eventos','creaciones','kpis','kpireg'];
+const SYNCED = ['proyectos','notas','eventos','creaciones','kpis','kpireg','contactos'];
 const dbPut = (store, v) => { if (SYNCED.includes(store) && v){ v._mod = Date.now(); scheduleSync(); } return dbPutRaw(store, v); };
 const dbDel = async (store, id) => { if (SYNCED.includes(store)){ await dbPutRaw('borrados', {id:store + ':' + id, store, rid:id, _mod:Date.now()}); scheduleSync(); } return dbDelRaw(store, id); };
 const kvGet = async (k, d) => { const q = tx('kv').get(k); return new Promise(r => { q.onsuccess = () => r(q.result ? q.result.v : d); q.onerror = () => r(d); }); };
@@ -745,6 +764,7 @@ const fmtD = iso => iso ? new Date(iso + 'T12:00').toLocaleDateString('es-CL', {
 const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '';
 const PRI = ['alta','media','baja'], EST = ['activo','pausado','terminado'];
 const FREQ = {diaria:1, semanal:7, mensual:30, trimestral:91, anual:365};
+const CANALES = {whatsapp:'WhatsApp', correo:'Correo', linkedin:'LinkedIn', facebook:'Facebook', instagram:'Instagram', x:'X (Twitter)', compartir:'Compartir'};
 const TIPOS = {documento:'Documento', presentacion:'Presentación', excel:'Excel', app:'App', tabla:'Tabla', codigo:'Código'};
 
 function normTask(t){
@@ -950,6 +970,38 @@ const actions = {
     const ok = await goView(vista, {fecha, proyecto, creacion, kpi});
     return ok ? {ok:true, vista} : {error:'Vista no encontrada'};
   },
+  async guardar_contacto({nombre, email = '', telefono = '', cargo = ''}){
+    if (!nombre) return {error:'Falta el nombre'};
+    const ex = await findCont(nombre), c = ex && norm(ex.nombre) === norm(nombre) ? ex : {id:uid(), nombre};
+    if (email) c.email = email; if (telefono) c.telefono = telefono; if (cargo) c.cargo = cargo;
+    await dbPut('contactos', c); refreshUI();
+    return {ok:true, contacto:{nombre:c.nombre, email:c.email, telefono:c.telefono}, actualizado:!!ex};
+  },
+  async listar_contactos(){ return {contactos:(await allCont()).map(c => ({nombre:c.nombre, email:c.email, telefono:c.telefono, cargo:c.cargo}))}; },
+  async preparar_envio({canal, para = '', asunto = '', mensaje = '', adjuntar_creacion = '', formato = ''}){
+    if (!CANALES[canal]) canal = 'compartir';
+    let destino = '', nombre = para;
+    if (para && (canal === 'whatsapp' || canal === 'correo')){
+      if (/@/.test(para) && canal === 'correo') destino = para;
+      else if (/^[+\d\s()-]{8,}$/.test(para) && canal === 'whatsapp') destino = para;
+      else {
+        const c = await findCont(para);
+        if (!c) return {error:`No tengo a "${para}" en contactos. Pide su ${canal === 'correo' ? 'correo' : 'número'} y guárdalo con guardar_contacto.`, contactos:(await allCont()).map(x => x.nombre)};
+        nombre = c.nombre; destino = canal === 'correo' ? c.email : c.telefono;
+        if (!destino) return {error:`${c.nombre} no tiene ${canal === 'correo' ? 'correo' : 'WhatsApp'} guardado. Pídeselo al usuario y actualízalo con guardar_contacto.`};
+      }
+    }
+    let adjunto = null;
+    if (adjuntar_creacion){ const c = await findCrea(adjuntar_creacion); if (!c) return {error:`No encontré la creación "${adjuntar_creacion}"`, disponibles:(await allCrea()).map(x => x.titulo)}; adjunto = {titulo:c.titulo, formato:formato || (c.tipo === 'presentacion' ? 'pptx' : c.tipo === 'excel' || c.tipo === 'tabla' ? 'xlsx' : c.tipo === 'documento' ? 'word' : 'html')}; }
+    await addSendCard({canal, para:nombre, destino, asunto, mensaje, adjunto});
+    return {ok:true, nota:'Tarjeta de envío mostrada; el usuario debe tocar el botón para abrir la app y confirmar. No digas que ya se envió.'};
+  },
+  async programar_publicacion({canal, mensaje, fecha, hora, titulo = '', adjuntar_creacion = ''}){
+    if (!validDate(fecha) || !mensaje) return {error:'Falta fecha (AAAA-MM-DD) o mensaje'};
+    const e = {id:uid(), titulo:titulo || `Publicar en ${CANALES[canal] || canal}`, fecha, hora_inicio:hora || '09:00', hora_fin:'', lugar:'', notas:mensaje.slice(0, 200), recordatorio:0, envio:{canal:CANALES[canal] ? canal : 'compartir', mensaje, adjunto:adjuntar_creacion ? {titulo:adjuntar_creacion} : null}, creado:new Date().toISOString()};
+    await dbPut('eventos', e); refreshUI();
+    return {ok:true, nota:'Quedó en la agenda; a esa hora KAI mostrará la tarjeta lista para publicar (con la app abierta).', evento:{titulo:e.titulo, fecha, hora:e.hora_inicio}};
+  },
   async listar_notas({limite = 10} = {}){
     const all = (await dbAll('notas')).sort((a,b) => b.fecha.localeCompare(a.fecha)).slice(0, limite);
     return {notas: all.map(n => ({texto:n.texto, etiqueta:n.etiqueta, fecha:n.fecha.slice(0,10)}))};
@@ -981,6 +1033,10 @@ const tools = [
   {name:'registrar_kpi', description:'Registra un valor de un KPI (si no existe el KPI, créalo antes con crear_kpi). Un registro por fecha: si ya hay uno ese día, se reemplaza.', input_schema:S({kpi:{type:'string'}, valor:{type:'number'}, fecha:{type:'string', description:'AAAA-MM-DD; para valores mensuales usa el último día del mes que corresponde'}, nota:{type:'string'}}, ['kpi','valor'])},
   {name:'consultar_kpis', description:'Estado de los KPIs: último valor, meta, promedio, tendencia, % de periodos en meta, si falta registrar e historial. Úsalo antes de analizar o hacer informes.', input_schema:S({kpi:{type:'string', description:'Omitir para todos'}, desde:{type:'string'}, hasta:{type:'string'}})},
   {name:'modificar_kpi', description:'Cambia la definición de un KPI (meta, unidad, sentido, frecuencia, nombre, categoría), borra el registro de una fecha o elimina el KPI completo.', input_schema:S({kpi:{type:'string'}, nombre:{type:'string'}, unidad:{type:'string'}, meta:{type:'number'}, sentido:{type:'string', enum:['mayor','menor']}, frecuencia:{type:'string', enum:Object.keys(FREQ)}, categoria:{type:'string'}, borrar_registro_fecha:{type:'string'}, eliminar:{type:'boolean'}}, ['kpi'])},
+  {name:'guardar_contacto', description:'Guarda o actualiza un contacto (nombre, correo, WhatsApp con código de país, cargo).', input_schema:S({nombre:{type:'string'}, email:{type:'string'}, telefono:{type:'string'}, cargo:{type:'string'}}, ['nombre'])},
+  {name:'listar_contactos', description:'Lista los contactos guardados.', input_schema:S({})},
+  {name:'preparar_envio', description:'Prepara un envío o publicación y muestra una tarjeta con un botón: al tocarlo se abre WhatsApp, el correo, LinkedIn, Facebook, Instagram o X con el texto (y el archivo adjunto) listos; el usuario confirma el envío. Nunca envía solo. Para whatsapp/correo, para = nombre de un contacto guardado, o un número o correo.', input_schema:S({canal:{type:'string', enum:Object.keys(CANALES)}, para:{type:'string'}, asunto:{type:'string'}, mensaje:{type:'string', description:'Texto final listo para enviar, adaptado al canal (WhatsApp breve; correo con saludo y firma; LinkedIn profesional con 3-5 hashtags; Instagram con emojis moderados y hashtags; X máx. 280 caracteres)'}, adjuntar_creacion:{type:'string', description:'Título de una creación para adjuntar como archivo'}, formato:{type:'string', enum:['pptx','xlsx','word','html']}}, ['canal','mensaje'])},
+  {name:'programar_publicacion', description:'Programa una publicación o mensaje para una fecha y hora: queda en la agenda y a esa hora KAI muestra la tarjeta lista para publicar.', input_schema:S({canal:{type:'string', enum:Object.keys(CANALES)}, mensaje:{type:'string'}, fecha:{type:'string'}, hora:{type:'string'}, titulo:{type:'string'}, adjuntar_creacion:{type:'string'}}, ['canal','mensaje','fecha'])},
   {name:'crear_nota', description:'Guarda una nota o recordatorio suelto, no asociado a un proyecto.', input_schema:S({texto:{type:'string'}, etiqueta:{type:'string'}}, ['texto'])},
   {name:'listar_notas', description:'Lee las notas más recientes.', input_schema:S({limite:{type:'number'}})}
 ];
@@ -988,7 +1044,7 @@ const tools = [
 /* ---------- Vistas ---------- */
 let filtro = 'activo', curProj = null, openTask = null;
 const fechaCls = f => !f ? '' : f < hoy() ? 'late' : f === hoy() ? 'today' : '';
-function refreshUI(){ if ($('drawer').classList.contains('open')){ renderProyectos(); renderAgenda(); renderKpis(); renderCrea(); renderNotas(); } }
+function refreshUI(){ if ($('drawer').classList.contains('open')){ renderProyectos(); renderAgenda(); renderKpis(); renderCrea(); renderNotas(); renderCont(); } }
 
 async function renderProyectos(){
   if (curProj) return renderDetalle();
@@ -1513,6 +1569,98 @@ $('pKpi').addEventListener('click', async e => {
   }
 });
 
+/* ---------- Contactos y envíos (WhatsApp, correo y redes sociales) ---------- */
+async function allCont(){ return (await dbAll('contactos')).sort((a,b) => a.nombre.localeCompare(b.nombre)); }
+async function findCont(q){
+  const all = await allCont(), n = norm(q || ''); if (!n) return null;
+  return all.find(c => norm(c.nombre) === n) || all.find(c => norm(c.nombre).includes(n) || n.includes(norm(c.nombre)))
+    || all.find(c => n.split(' ').some(w => w.length > 2 && norm(c.nombre).split(' ').includes(w)));
+}
+const telDigits = t => { let d = String(t || '').replace(/\D/g, ''); if (d.length === 9 && d[0] === '9') d = '56' + d; return d; };
+async function renderCont(){
+  const all = await allCont();
+  $('contList').innerHTML = all.length ? all.map(c => `<div class="card"><div class="t"><strong>${esc(c.nombre)}</strong><button class="x" data-delc="${esc(c.id)}" aria-label="Eliminar">✕</button></div>
+    <div class="meta">${c.cargo ? `<span>${esc(c.cargo)}</span>` : ''}${c.email ? `<span>${esc(c.email)}</span>` : ''}${c.telefono ? `<span>${esc(c.telefono)}</span>` : ''}</div></div>`).join('') : '<p class="small">Sin contactos todavía.</p>';
+}
+const sendPending = new Map(); // tarjetas de envío listas para tocar
+// Archivo real para adjuntar a partir de una creación
+async function creationFile(c, formato){
+  let name, type, data;
+  const f = formato || (c.tipo === 'presentacion' ? 'pptx' : c.tipo === 'excel' || c.tipo === 'tabla' ? 'xlsx' : c.tipo === 'documento' ? 'word' : 'html');
+  if (f === 'pptx' && c.tipo === 'presentacion'){ data = await buildPPTX(c); name = safeName(c.titulo) + '.pptx'; type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'; }
+  else if (f === 'xlsx' && (c.tipo === 'excel' || c.tipo === 'tabla')){ const d = c.tipo === 'excel' ? parseExcel(c) : csvToExcel(c); data = await buildXLSX(d, c.titulo); name = safeName(c.titulo) + '.xlsx'; type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; }
+  else if (f === 'html'){ data = printable(c); name = safeName(c.titulo) + '.html'; type = 'text/html'; }
+  else { const x = exportOf(c); data = x.data; name = x.name; type = x.type; }
+  return new File([data], name, {type});
+}
+async function addSendCard(env){
+  const id = uid(); sendPending.set(id, env);
+  const e = log.querySelector('.empty'); if (e) e.remove();
+  const d = document.createElement('div'); d.className = 'sendcard'; d.dataset.send = id;
+  const showSubj = env.canal === 'correo';
+  const btnTxt = {whatsapp:'Abrir WhatsApp', correo:'Abrir correo', linkedin:'Publicar en LinkedIn', facebook:'Publicar en Facebook', instagram:'Publicar en Instagram', x:'Publicar en X', compartir:'Compartir'}[env.canal] || 'Enviar';
+  d.innerHTML = `<div class="sh">📤 Listo para enviar <i>${esc(CANALES[env.canal] || env.canal)}</i></div>
+    ${env.para ? `<div class="to">Para: ${esc(env.para)}${env.destino ? ' · ' + esc(env.destino) : ''}</div>` : ''}
+    ${showSubj ? `<input data-f="asunto" value="${esc(env.asunto || '')}" placeholder="Asunto">` : ''}
+    <textarea data-f="mensaje" aria-label="Mensaje">${esc(env.mensaje || '')}</textarea>
+    ${env.adjunto ? `<div class="att"><div class="ic">${esc((env.adjunto.formato || '').toUpperCase().slice(0,4) || 'DOC')}</div><span>${esc(env.adjunto.titulo)}</span></div>` : ''}
+    <div class="row"><button class="btn p sm" data-sa="go">${btnTxt}</button><button class="btn sm" data-sa="share">Otra app</button><button class="btn sm" data-sa="copy">Copiar texto</button>${env.canal === 'correo' && !isAndroid ? '<button class="btn sm" data-sa="gmail">Gmail web</button><button class="btn sm" data-sa="outlook">Outlook web</button>' : ''}</div>
+    <div class="note">Se abre la app con todo listo; tú confirmas el envío.</div>`;
+  log.appendChild(d); chatMode(); scrollLog(true);
+  if (vCur) vStatus('📤 Envío listo: ciérrame para verlo en la conversación');
+}
+async function doSend(card, act){
+  const env = sendPending.get(card.dataset.send); if (!env) return;
+  const msg = card.querySelector('[data-f=mensaje]').value, asunto = card.querySelector('[data-f=asunto]')?.value || env.asunto || '';
+  const done = t => { let n = card.querySelector('.done'); if (!n){ n = document.createElement('div'); n.className = 'done'; card.appendChild(n); } n.textContent = t; };
+  const copy = async () => { try { await navigator.clipboard.writeText(msg); return true; } catch(_){ return false; } };
+  let file = null;
+  if (env.adjunto){ const c = await findCrea(env.adjunto.titulo); if (c){ try { file = await creationFile(c, env.adjunto.formato); } catch(e){ done('No pude preparar el adjunto: ' + e.message); } } }
+  const canShareFile = file && navigator.canShare && navigator.canShare({files:[file]});
+  const share = async (extra = {}) => {
+    if (!navigator.share){ if (file) download(file.name, file.type, file); await copy(); done(file ? 'Descargué el archivo y copié el texto: pégalo en la app.' : 'Texto copiado.'); return; }
+    try { await navigator.share({text:msg, ...(asunto ? {title:asunto} : {}), ...(canShareFile ? {files:[file]} : {}), ...extra}); done('Compartido.'); }
+    catch(e){ if (e.name !== 'AbortError'){ await copy(); done('No se pudo compartir; copié el texto.'); } }
+  };
+  const open = url => { const w = window.open(url, '_blank', 'noopener'); if (!w) location.href = url; };
+  if (act === 'copy'){ done(await copy() ? 'Texto copiado.' : 'No pude copiar.'); return; }
+  if (act === 'share') return share();
+  if (act === 'gmail'){ if (file) download(file.name, file.type, file); open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(env.destino || '')}&su=${encodeURIComponent(asunto)}&body=${encodeURIComponent(msg)}`); done(file ? 'Descargué el adjunto: arrástralo al correo.' : 'Abrí Gmail.'); return; }
+  if (act === 'outlook'){ if (file) download(file.name, file.type, file); open(`https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(env.destino || '')}&subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(msg)}`); done(file ? 'Descargué el adjunto: arrástralo al correo.' : 'Abrí Outlook.'); return; }
+  // botón principal según el canal
+  switch (env.canal){
+    case 'whatsapp':
+      if (file && canShareFile){ await copy(); return share(); } // con archivo: se elige WhatsApp en el menú de compartir
+      if (file) download(file.name, file.type, file);
+      open(`https://wa.me/${telDigits(env.destino)}?text=${encodeURIComponent(msg)}`); done(file ? 'Abrí WhatsApp y descargué el archivo: adjúntalo con el clip 📎.' : 'Abrí WhatsApp.'); return;
+    case 'correo':
+      if (file && canShareFile) return share();
+      if (file) download(file.name, file.type, file);
+      location.href = `mailto:${encodeURIComponent(env.destino || '')}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(msg)}`;
+      done(file ? 'Abrí el correo y descargué el adjunto para que lo agregues.' : 'Abrí el correo.'); return;
+    case 'linkedin':
+      if (file && canShareFile) return share();
+      if (file) download(file.name, file.type, file);
+      await copy(); open(`https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(msg)}`); done('Abrí LinkedIn (el texto también quedó copiado por si no aparece)' + (file ? ' y descargué el archivo para que lo adjuntes.' : '.')); return;
+    case 'x':
+      open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(msg)}`); done('Abrí X.'); return;
+    case 'facebook': case 'instagram':
+      await copy(); // estas redes no aceptan texto prellenado: se copia para pegarlo
+      if (navigator.share) return share();
+      open(env.canal === 'facebook' ? 'https://www.facebook.com/' : 'https://www.instagram.com/'); done('Copié el texto: pégalo en la publicación.'); return;
+    default: return share();
+  }
+}
+log.addEventListener('click', e => { const b = e.target.closest('[data-sa]'); if (b) doSend(b.closest('.sendcard'), b.dataset.sa); });
+$('pNotas').addEventListener('click', async e => {
+  const d = e.target.closest('[data-delc]'); if (d){ await dbDel('contactos', d.dataset.delc); return renderCont(); }
+  if (e.target.id === 'cAdd'){
+    const nombre = $('cNom').value.trim(); if (!nombre) return;
+    await actions.guardar_contacto({nombre, email:$('cMail').value.trim(), telefono:$('cTel').value.trim(), cargo:$('cCargo').value.trim()});
+    ['cNom','cMail','cTel','cCargo'].forEach(i => $(i).value = '');
+  }
+});
+
 async function renderNotas(){
   const all = (await dbAll('notas')).sort((a,b) => b.fecha.localeCompare(a.fecha));
   $('notaList').innerHTML = all.length ? all.map(n => `
@@ -1550,6 +1698,7 @@ Cómo responder:
 - La app ya tiene su propia agenda-calendario, proyectos, creaciones y notas: para mostrarlos usa navegar. Nunca construyas un calendario o agenda como creación salvo que pidan expresamente una app aparte. Para volver a la pantalla principal usa navegar con vista inicio.
 - Si el usuario adjunta fotos o archivos, analízalos con atención: describe lo relevante (en terreno: estado de equipos, daños, riesgos, condiciones inseguras), extrae datos, resume o úsalos para crear lo que pida (por ejemplo, convertir un PDF en procedimiento o una foto en informe de hallazgo).
 - KPIs: cuando el usuario diga un valor de un indicador («cumplimiento del programa esta semana 92», «este mes tuvimos 1 incidente»), regístralo con registrar_kpi (créalo antes si no existe, con unidad, meta y sentido razonables) y dile si cumple la meta y cómo va frente al valor anterior. Para análisis o informes usa consultar_kpis primero; para informes crea una presentacion o un excel con los datos reales, sin inventar cifras.
+- Envíos y redes sociales: para mandar algo por WhatsApp o correo, o publicar en LinkedIn, Facebook, Instagram o X, redacta el texto final adaptado al canal y usa preparar_envio (con adjuntar_creacion si corresponde enviar un informe, presentación o Excel). Tú no envías: el usuario toca el botón y confirma en la app; dile «te dejé el envío listo, toca el botón». Si falta el correo o número de un contacto, pídelo y guárdalo con guardar_contacto. Para publicar más tarde usa programar_publicacion.
 - Usa las herramientas sin pedir permiso. Si no encuentras algo, lista antes de rendirte. Para "qué tengo hoy" usa resumen_pendientes.
 - Si necesitas información actual (noticias, precios, normativa vigente, datos recientes) y tienes búsqueda web, úsala.
 ${openCreaHint()}${cfg.about ? '\nContexto del usuario: ' + cfg.about : ''}`;
@@ -1933,8 +2082,8 @@ async function checkReminders(){
     const start = new Date(e.fecha + 'T' + e.hora_inicio), warn = new Date(start - (+e.recordatorio || 15) * 60000);
     if (now >= warn && now < new Date(+start + 5 * 60000)){
       avisados.add(e.id);
-      const msg = `Recordatorio: ${e.titulo} a las ${e.hora_inicio}${e.lugar ? ' en ' + e.lugar : ''}.`;
-      addMsg('a', msg); if (!busy && !speaking) speak(msg);
+      const msg = e.envio ? `Es hora de publicar: ${e.titulo}. Te dejé la publicación lista.` : `Recordatorio: ${e.titulo} a las ${e.hora_inicio}${e.lugar ? ' en ' + e.lugar : ''}.`;
+      addMsg('a', msg); if (e.envio) addSendCard({...e.envio}); if (!busy && !speaking) speak(msg);
       try { if ('Notification' in window && Notification.permission === 'granted') new Notification('KAI', {body:msg, icon:'icon-192.png'}); } catch(_){}
     }
   }

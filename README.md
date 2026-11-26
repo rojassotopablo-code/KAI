@@ -56,6 +56,13 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v4.1 — WhatsApp, correo y redes sociales
+- **Envíos con un toque:** «mándale el informe a Juan por WhatsApp», «escríbele un correo a Pedro con el Excel de presupuesto», «publica en LinkedIn que cerramos noviembre sin incidentes». KAI redacta el texto adaptado al canal, adjunta el archivo (Word, PowerPoint o Excel) y muestra una **tarjeta de envío**. Al tocar el botón se abre WhatsApp, el correo, LinkedIn, Facebook, Instagram o X con todo listo, y tú confirmas.
+- El texto de la tarjeta se puede corregir antes de enviar. También están los botones «Otra app» (menú de compartir del teléfono), «Copiar texto» y, en el PC, «Gmail web» / «Outlook web».
+- **Contactos** (☰ › Notas › Contactos): nombre, correo y WhatsApp. Se sincronizan entre dispositivos. Por voz: «guarda a Juan Pérez, su WhatsApp es +56 9…».
+- **Publicaciones programadas:** «programa esta publicación de LinkedIn para el lunes a las 9». Queda en la agenda y a esa hora KAI muestra la tarjeta lista (con la app abierta).
+- KAI nunca envía ni publica solo: siempre confirmas tú en la app de destino.
+
 ## Cambios v4.0 — KPIs con gráficos
 - Nueva pestaña **KPIs**: cada indicador con su último valor, semáforo frente a la meta (verde cumple, ámbar a menos de 10%, rojo no cumple), flecha de tendencia y minigráfico. Agrupados por categoría.
 - Al tocar un KPI: gráfico con línea de meta y puntos de color, último valor, promedio, % de periodos en meta, filtros 30 días / 90 días / 12 meses / todo, historial y registro manual.
