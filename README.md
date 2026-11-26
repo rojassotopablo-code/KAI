@@ -56,6 +56,11 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v3.6
+- Vincular el celular ahora es más fácil: el QR del PC es un enlace. Apunta con la **cámara normal del teléfono** y toca el enlace: KAI se abre ya vinculado y trae tus datos.
+- El código es más corto (QR menos denso) y KAI tiene un segundo lector de QR por si el navegador no trae uno.
+- Al vincular se muestra en la conversación cuántos elementos se trajeron o, si falló, el motivo.
+
 ## Cambios v3.5 — Sincronización entre celular y PC
 - Tus proyectos, agenda, notas y creaciones se guardan en un **repositorio privado de tu GitHub** (`kai-datos`) y aparecen en todos tus dispositivos. Gratis, sin servicios de terceros.
 - Se sincroniza solo: al abrir KAI, al volver a la app, 4 segundos después de cada cambio y cada 2 minutos. Sin internet, sigue funcionando y sincroniza cuando vuelve la conexión.

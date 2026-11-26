@@ -344,7 +344,7 @@ a{color:var(--cy)}
       </div>
       <div id="linkBox" class="card" hidden style="margin-top:10px;text-align:center">
         <div id="qr" style="display:inline-block;background:#fff;padding:10px;border-radius:8px"></div>
-        <p class="small">En el otro dispositivo abre KAI › Ajustes › <b>Vincular con código QR</b> y saca una foto a este código. Incluye tu llave de GitHub y tu API key: no lo compartas con nadie.</p>
+        <p class="small"><b>En el celular:</b> apunta con la <b>cámara normal</b> del teléfono a este código y toca el enlace que aparece: KAI se abre ya vinculado. (También sirve Ajustes › Vincular con código QR.) Incluye tu llave de GitHub y tu API key: no lo compartas con nadie.</p>
         <div class="row" style="justify-content:center"><button class="btn sm" id="linkCopy" type="button">Copiar como texto</button><button class="btn sm" id="linkHide" type="button">Ocultar</button></div>
       </div>
       <details style="margin-top:8px"><summary class="small" style="cursor:pointer">¿No puedes escanear? Pegar código de vinculación</summary>
@@ -358,7 +358,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v3.5 · Fase 3</p>
+      <p class="note" id="ver">KAI v3.6 · Fase 3</p>
     </div>
   </div>
 </div>
@@ -1638,16 +1638,44 @@ async function syncNow(manual){
 // sincroniza al abrir, al volver a la app y cada 2 minutos mientras está abierta
 setInterval(() => { if (syncOn() && document.visibilityState === 'visible') syncNow(); }, 120000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleSync(500); });
+window.addEventListener('hashchange', async () => { if (!location.hash.startsWith('#vincular=')) return; const code = location.hash.slice(10); window.history.replaceState(null, '', location.pathname); try { await applyLink('KAI2:' + code.replace(/^KAI2:/, '')); } catch(e){ addMsg('e', 'No pude vincular: ' + e.message); } });
 window.addEventListener('online', () => scheduleSync(500));
 
 /* ---------- Vincular otro dispositivo ---------- */
-const linkCode = () => 'KAI1:' + b64enc(JSON.stringify({r:cfg.syncRepo, t:cfg.syncToken, k:cfg.apiKey, m:cfg.model, a:cfg.about}));
+// Código de vinculación: corto (para que el QR sea fácil de leer) y en forma de enlace que abre KAI ya vinculado
+const linkCode = () => 'KAI2:' + b64enc([cfg.syncRepo, cfg.syncToken, cfg.apiKey || ''].join('\n')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const linkURL = () => location.origin + location.pathname + '#vincular=' + linkCode();
 async function applyLink(code){
-  const m = String(code || '').trim().match(/KAI1:([A-Za-z0-9+/=]+)/); if (!m) throw new Error('Código no válido.');
-  const d = JSON.parse(b64dec(m[1]));
-  Object.assign(cfg, {syncRepo:d.r || cfg.syncRepo, syncToken:d.t || cfg.syncToken, apiKey:d.k || cfg.apiKey, model:d.m || cfg.model, about:cfg.about || d.a || ''});
+  const s = String(code || '').trim();
+  let d;
+  const m2 = s.match(/KAI2:([A-Za-z0-9_-]+)/), m1 = s.match(/KAI1:([A-Za-z0-9+/=]+)/);
+  if (m2){ const b = m2[1].replace(/-/g, '+').replace(/_/g, '/'); const [r, t, k] = b64dec(b + '==='.slice((b.length + 3) % 4)).split('\n'); d = {r, t, k}; }
+  else if (m1) d = JSON.parse(b64dec(m1[1]));
+  else throw new Error('Código no válido.');
+  if (!d.r || !d.t) throw new Error('Código incompleto.');
+  Object.assign(cfg, {syncRepo:d.r, syncToken:d.t, apiKey:d.k || cfg.apiKey, model:d.m || cfg.model});
   await kvSet('cfg', cfg); fillCfg(); fillSync();
-  addMsg('s', 'Dispositivo vinculado. Trayendo tus datos…'); await syncNow(true);
+  $('drawer').classList.remove('open');
+  addMsg('a', '**Dispositivo vinculado.** Estoy trayendo tus proyectos, agenda, notas y creaciones…');
+  await syncNow(true);
+  const n = (await dbAll('proyectos')).length + (await dbAll('eventos')).length + (await dbAll('notas')).length + (await dbAll('creaciones')).length;
+  if (syncOn() && !/Sincronizado/.test($('syncState').textContent)) addMsg('e', 'La vinculación quedó guardada, pero la sincronización falló: ' + $('syncState').textContent);
+  else addMsg('a', `Listo: este dispositivo ya está sincronizado (${n} elementos).`);
+}
+async function readQR(file){
+  const bmp = await createImageBitmap(file);
+  if ('BarcodeDetector' in window){
+    try { const c = await new BarcodeDetector({formats:['qr_code']}).detect(bmp); if (c.length) return c[0].rawValue; } catch(_){}
+  }
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js'); // lector de respaldo
+  for (const max of [1200, 800, 1600]){
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height)), cv = document.createElement('canvas');
+    cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    const ctx = cv.getContext('2d'); ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+    const res = jsQR(ctx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, {inversionAttempts:'attemptBoth'});
+    if (res) return res.data;
+  }
+  return null;
 }
 function fillSync(){
   if (!$('syncRepo')) return;
@@ -1666,19 +1694,19 @@ $('syncNow').addEventListener('click', () => syncNow(true));
 $('linkShow').addEventListener('click', async () => {
   if (!syncOn()){ syncStatus('Primero configura la sincronización en este dispositivo.', true); return; }
   $('linkBox').hidden = false; $('qr').innerHTML = '';
-  try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'); new QRCode($('qr'), {text:linkCode(), width:240, height:240, correctLevel:QRCode.CorrectLevel.L}); }
+  try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'); new QRCode($('qr'), {text:linkURL(), width:320, height:320, correctLevel:QRCode.CorrectLevel.L}); }
   catch(_){ $('qr').textContent = 'No pude dibujar el QR sin internet; usa «Copiar como texto».'; }
 });
 $('linkHide').addEventListener('click', () => { $('linkBox').hidden = true; $('qr').innerHTML = ''; });
-$('linkCopy').addEventListener('click', async () => { try { await navigator.clipboard.writeText(linkCode()); $('linkCopy').textContent = 'Copiado ✓'; } catch(_){ $('linkText').value = linkCode(); } });
+$('linkCopy').addEventListener('click', async () => { try { await navigator.clipboard.writeText(linkURL()); $('linkCopy').textContent = 'Copiado ✓'; } catch(_){ $('linkText').value = linkURL(); } });
 $('linkApply').addEventListener('click', async () => { try { await applyLink($('linkText').value); $('linkText').value = ''; } catch(e){ syncStatus(e.message, true); } });
 $('linkScan').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  syncStatus('Leyendo el código…');
   try {
-    if (!('BarcodeDetector' in window)) throw new Error('Este navegador no lee códigos QR. Usa «Pegar código de vinculación».');
-    const codes = await new BarcodeDetector({formats:['qr_code']}).detect(await createImageBitmap(f));
-    if (!codes.length) throw new Error('No encontré un código QR en la foto. Acércate más e inténtalo de nuevo.');
-    await applyLink(codes[0].rawValue);
+    const code = await readQR(f);
+    if (!code) throw new Error('No encontré el código en la foto. Acércate para que el QR ocupe casi toda la foto, sin reflejos, o usa la cámara normal del celular.');
+    await applyLink(code);
   } catch(err){ syncStatus(err.message, true); addMsg('e', err.message); }
 });
 
@@ -1710,7 +1738,11 @@ async function checkFiles(){
   if (!cfg.apiKey) addMsg('s', 'Modo básico: agrega tu API key en ☰ › Ajustes para conversar libremente.');
   if (cfg.autoWake && SR) toggleWake(true); else updateWakeBtn();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
-  checkFiles(); setTimeout(checkReminders, 3000); fillSync(); if (syncOn()) setTimeout(() => syncNow(), 800);
+  checkFiles(); setTimeout(checkReminders, 3000); fillSync();
+  if (location.hash.startsWith('#vincular=')){
+    const code = location.hash.slice(10); window.history.replaceState(null, '', location.pathname); // la llave no queda en la barra ni en el historial
+    try { await applyLink('KAI2:' + code.replace(/^KAI2:/, '')); } catch(e){ addMsg('e', 'No pude vincular: ' + e.message); }
+  } if (syncOn()) setTimeout(() => syncNow(), 800);
   if (await kvGet('lastBrief', '') !== hoy()){
     const r = await pendientes(7);
     const evH = (await allEv()).filter(e => e.fecha === hoy());
