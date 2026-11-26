@@ -432,7 +432,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v5.0 · Servidor</p>
+      <p class="note" id="ver">KAI v5.0.1 · Servidor</p>
     </div>
   </div>
 </div>
@@ -647,7 +647,19 @@ function findWake(text){
       if (vw.every((x, m) => nw[k + m] === x)) return {after: raw.slice(k + vw.length).join(' ').replace(/^[,.;:\s]+/, '')};
     }
   }
+  // Coincidencia por sonido: si la frase EMPIEZA con algo que suena a «KAI» (cae, kay, cai, ky, kaï…), también vale.
+  // Solo al comienzo de la frase, para no activarse con palabras comunes en medio de una conversación.
+  if (norm(cfg.wake || 'kai') === 'kai' && nw.length){
+    const start = nw[0] === 'oye' || nw[0] === 'hola' || nw[0] === 'ok' ? 1 : 0;
+    if (nw[start] && fonetica(nw[start]) === 'kai') return {after: raw.slice(start + 1).join(' ').replace(/^[,.;:\s]+/, '')};
+    if (nw[start] === 'ka' && nw[start + 1] === 'i') return {after: raw.slice(start + 2).join(' ').replace(/^[,.;:\s]+/, '')};
+  }
   return null;
+}
+// Cómo suena una palabra: c/q/k → k, y/e final → i, sin h ni letras repetidas
+function fonetica(w){
+  return w.replace(/[^a-z]/g, '').replace(/h/g, '').replace(/qu/g, 'k').replace(/c(?=[aou]|$)/g, 'k').replace(/q/g, 'k')
+    .replace(/(.)\1+/g, '$1').replace(/y$/, 'i').replace(/e$/, 'i').replace(/^kaj$/, 'kai').replace(/^kei$/, 'kai');
 }
 const pausaMs = () => (+cfg.pausa || 2) * 1000;
 function vStatus(t, err){ const m = $('vMsg'); if (!m || !vCur) return; m.textContent = t || ''; m.style.color = err ? 'var(--bad)' : ''; }
