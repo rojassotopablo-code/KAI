@@ -148,6 +148,21 @@ a{color:var(--cy)}
 .blog{font-size:14px;padding:6px 0;border-bottom:1px solid var(--line)}
 .blog .small{display:block}
 @media(max-width:600px){.tab{font-size:15px}.addrow{grid-template-columns:minmax(0,1fr)}}
+/* Adjuntos */
+.clip{width:48px;height:48px;flex:none;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);display:grid;place-items:center}
+.clip svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+.vbar .clip{width:44px;height:44px}
+.atts{flex:none;display:flex;gap:8px;overflow-x:auto;padding:8px 0 0}
+.att{position:relative;flex:none;display:flex;align-items:center;gap:8px;height:56px;padding:0 30px 0 6px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:13px;max-width:220px}
+.att img{width:44px;height:44px;object-fit:cover;border-radius:8px}
+.att .ic{width:44px;height:44px;border-radius:8px;background:#0a1422;display:grid;place-items:center;font-size:12px;color:var(--cy);font-weight:600}
+.att span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att button{position:absolute;top:2px;right:2px;width:26px;height:26px;border:0;background:none;color:var(--mute);border-radius:6px}
+.att.load{opacity:.6}
+.msg .thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.msg .thumbs img{width:72px;height:72px;object-fit:cover;border-radius:8px}
+.msg .thumbs .fn{font-size:12px;padding:4px 8px;border-radius:8px;background:#0a1422}
+.drop{outline:2px dashed var(--cy);outline-offset:-8px}
 /* Fase 3: creaciones, calendario, markdown */
 .tabs{overflow-x:auto;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
 .tab{flex:1 0 auto;padding:0 10px}
@@ -219,7 +234,10 @@ a{color:var(--cy)}
   <div class="log" id="log" aria-live="polite"></div>
   <button class="tobot" id="toBot" type="button" aria-label="Ir al final">↓</button>
 
+  <div class="atts" id="atts" hidden></div>
   <form class="bar" id="form">
+    <button class="clip" id="clipBtn" type="button" aria-label="Adjuntar foto o archivo"><svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/></svg></button>
+    <input type="file" id="fileIn" multiple hidden accept="image/*,application/pdf,.pdf,.txt,.csv,.md,.json,.html,.xml,.xlsx,.xls,.docx">
     <input id="txt" placeholder="Escribe o habla…" autocomplete="off" aria-label="Mensaje">
     <button class="mic" id="micBtn" type="button" aria-label="Hablar">
       <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
@@ -307,7 +325,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v3.3 · Fase 3</p>
+      <p class="note" id="ver">KAI v3.4 · Fase 3</p>
     </div>
   </div>
 </div>
@@ -318,6 +336,7 @@ a{color:var(--cy)}
   <div class="vbody" id="vBody"></div>
   <div class="vmsg" id="vMsg"></div>
   <form class="vbar" id="vForm">
+    <button class="clip" id="vClip" type="button" aria-label="Adjuntar"><svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/></svg></button>
     <input id="vTxt" placeholder="Pide cambios: «agrega una conclusión»…" autocomplete="off" aria-label="Pedir cambios">
     <button class="mic" id="vMic" type="button" aria-label="Hablar"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
   </form>
@@ -1077,6 +1096,7 @@ Cómo responder:
 - Presentaciones: Markdown con diapositivas separadas por una línea con ---, títulos claros y pocas viñetas por diapositiva.
 - Proyectos: para "arma un plan" crea el proyecto con 6 a 15 tareas con fechas y prioridad. Agenda: reuniones y citas con hora van al calendario con crear_evento; trabajos con plazo son tareas de un proyecto.
 - La app ya tiene su propia agenda-calendario, proyectos, creaciones y notas: para mostrarlos usa navegar. Nunca construyas un calendario o agenda como creación salvo que pidan expresamente una app aparte. Para volver a la pantalla principal usa navegar con vista inicio.
+- Si el usuario adjunta fotos o archivos, analízalos con atención: describe lo relevante (en terreno: estado de equipos, daños, riesgos, condiciones inseguras), extrae datos, resume o úsalos para crear lo que pida (por ejemplo, convertir un PDF en procedimiento o una foto en informe de hallazgo).
 - Usa las herramientas sin pedir permiso. Si no encuentras algo, lista antes de rendirte. Para "qué tengo hoy" usa resumen_pendientes.
 - Si necesitas información actual (noticias, precios, normativa vigente, datos recientes) y tienes búsqueda web, úsala.
 ${openCreaHint()}${cfg.about ? '\nContexto del usuario: ' + cfg.about : ''}`;
@@ -1084,7 +1104,7 @@ ${openCreaHint()}${cfg.about ? '\nContexto del usuario: ' + cfg.about : ''}`;
 function openCreaHint(){ return vCur ? `\nAhora el usuario tiene abierta en pantalla la creación con id ${vCur}; si pide cambios sin decir cuál, se refiere a esa.` : ''; }
 function trimHistory(){
   while (history.length > 30) history.shift();
-  while (history.length && !(history[0].role === 'user' && typeof history[0].content === 'string')) history.shift();
+  while (history.length && !(history[0].role === 'user' && (typeof history[0].content === 'string' || !history[0].content.some(c => c.type === 'tool_result')))) history.shift();
 }
 // Quita contenidos grandes de turnos ya terminados para que cada consulta sea rápida y barata
 function compactHistory(){
@@ -1131,7 +1151,7 @@ function friendly(e){
   if (!e.status) return 'No pude conectar con Claude. Revisa tu conexión a internet.';
   return `Error ${e.status} de Claude: ${m || 'sin detalle'}`;
 }
-async function askClaude(text, retried){
+async function askClaude(text, retried){ // text: texto o lista de bloques (con adjuntos)
   const start = history.length;
   history.push({role:'user', content:text});
   try {
@@ -1146,7 +1166,7 @@ async function askClaude(text, retried){
       if (!uses.length){
         const reply = safe.filter(c => c.type === 'text').map(c => c.text).join('\n\n').trim();
         if (!safe.length) history.pop();
-        compactHistory();
+        compactHistory(); compactAtts();
         if (data.stop_reason === 'max_tokens') return (reply ? reply + '\n\n' : '') + '(La respuesta se cortó por largo. Pídeme que continúe.)';
         return reply || 'Listo.';
       }
@@ -1215,6 +1235,81 @@ async function localCommand(t){
   return 'Para conversar libremente y armar planes necesito tu API key en Ajustes. Mientras tanto puedo crear proyectos, agregar y completar tareas, anotar y decirte qué tienes pendiente.';
 }
 
+/* ================= Adjuntos: fotos, PDF, Excel, Word, texto ================= */
+let pendingAtts = [];
+const MAXMB = 15;
+function loadScript(src){ return new Promise((res, rej) => { if (document.querySelector(`script[src="${src}"]`)) return res(); const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('No pude cargar el lector (¿sin internet?)')); document.head.appendChild(s); }); }
+const readAs = (f, how) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr['readAs' + how](f); });
+// Las fotos se achican antes de enviarlas: más rápido y más barato, sin perder lo importante
+async function shrinkImage(f){
+  const url = URL.createObjectURL(f);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const k = Math.min(1, 1568 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const data = c.toDataURL('image/jpeg', 0.85);
+    return {data:data.split(',')[1], thumb:data, media:'image/jpeg'};
+  } finally { URL.revokeObjectURL(url); }
+}
+async function fileToAtt(f){
+  const name = f.name || 'archivo', ext = (name.split('.').pop() || '').toLowerCase();
+  if (f.size > MAXMB * 1048576) throw new Error(`${name} pesa más de ${MAXMB} MB.`);
+  if (f.type.startsWith('image/')){ const im = await shrinkImage(f); return {kind:'image', name, ...im}; }
+  if (f.type === 'application/pdf' || ext === 'pdf'){ const d = await readAs(f, 'DataURL'); return {kind:'pdf', name, data:d.split(',')[1]}; }
+  if (ext === 'xlsx' || ext === 'xls'){
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+    const wb = XLSX.read(await readAs(f, 'ArrayBuffer'), {type:'array'});
+    const text = wb.SheetNames.map(s => `### Hoja: ${s}\n` + XLSX.utils.sheet_to_csv(wb.Sheets[s], {blankrows:false})).join('\n\n');
+    return {kind:'text', name, text:text.slice(0, 150000)};
+  }
+  if (ext === 'docx'){
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
+    const out = await mammoth.extractRawText({arrayBuffer:await readAs(f, 'ArrayBuffer')});
+    return {kind:'text', name, text:out.value.slice(0, 150000)};
+  }
+  return {kind:'text', name, text:(await readAs(f, 'Text')).slice(0, 150000)};
+}
+function renderAtts(){
+  const box = $('atts'); box.hidden = !pendingAtts.length;
+  box.innerHTML = pendingAtts.map((a, i) => `<div class="att ${a.loading ? 'load' : ''}">${a.thumb ? `<img src="${a.thumb}" alt="">` : `<div class="ic">${esc((a.name.split('.').pop() || '').toUpperCase().slice(0,4))}</div>`}<span>${esc(a.loading ? 'Cargando…' : a.name)}</span><button type="button" data-rm="${i}" aria-label="Quitar">✕</button></div>`).join('');
+  if (vCur) vStatus(pendingAtts.length ? `📎 ${pendingAtts.length} archivo${pendingAtts.length > 1 ? 's' : ''} listo${pendingAtts.length > 1 ? 's' : ''}: di o escribe qué hago con ${pendingAtts.length > 1 ? 'ellos' : 'él'}` : '');
+}
+async function addFiles(files){
+  for (const f of files){
+    const ph = {name:f.name || 'archivo', loading:true}; pendingAtts.push(ph); renderAtts();
+    try { Object.assign(ph, await fileToAtt(f)); ph.loading = false; }
+    catch(e){ pendingAtts = pendingAtts.filter(x => x !== ph); addMsg('e', `No pude leer ${f.name}: ${e.message}`); }
+    renderAtts();
+  }
+  if (pendingAtts.length && !busy) setState(orb.dataset.s, 'Archivo listo: dime qué hago con él');
+}
+// Convierte los adjuntos en bloques que Claude entiende
+function attBlocks(atts){
+  return atts.map(a => a.kind === 'image' ? {type:'image', source:{type:'base64', media_type:a.media, data:a.data}}
+    : a.kind === 'pdf' ? {type:'document', source:{type:'base64', media_type:'application/pdf', data:a.data}, title:a.name}
+    : {type:'text', text:`Archivo adjunto «${a.name}»:\n\n${a.text}`});
+}
+// Para no reenviar archivos pesados en cada consulta, los adjuntos antiguos se reemplazan por una nota
+function compactAtts(){
+  let seen = 0;
+  for (let i = history.length - 1; i >= 0; i--){
+    const m = history[i];
+    if (m.role !== 'user' || !Array.isArray(m.content) || m.content.some(c => c.type === 'tool_result')) continue;
+    if (!m.content.some(c => c.type === 'image' || c.type === 'document' || (c.type === 'text' && c.text.startsWith('Archivo adjunto «')))) continue;
+    if (++seen <= 2) continue; // se mantienen los dos últimos mensajes con adjuntos
+    m.content = m.content.map(c => c.type === 'image' ? {type:'text', text:'[foto adjunta anteriormente]'} : c.type === 'document' ? {type:'text', text:`[PDF «${c.title || ''}» adjuntado anteriormente]`} : c.type === 'text' && c.text.startsWith('Archivo adjunto «') ? {type:'text', text:c.text.split('\n')[0] + ' [contenido omitido]'} : c);
+  }
+}
+$('clipBtn').addEventListener('click', () => $('fileIn').click());
+$('vClip').addEventListener('click', () => $('fileIn').click());
+$('fileIn').addEventListener('change', e => { addFiles([...e.target.files]); e.target.value = ''; });
+$('atts').addEventListener('click', e => { const b = e.target.closest('[data-rm]'); if (b){ pendingAtts.splice(+b.dataset.rm, 1); renderAtts(); } });
+document.addEventListener('paste', e => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length){ e.preventDefault(); addFiles(fs); } });
+document.addEventListener('dragover', e => { if (e.dataTransfer?.types?.includes('Files')){ e.preventDefault(); document.body.classList.add('drop'); } });
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('drop'); });
+document.addEventListener('drop', e => { document.body.classList.remove('drop'); const fs = [...(e.dataTransfer?.files || [])]; if (fs.length){ e.preventDefault(); addFiles(fs); } });
+
 /* ================= Navegación ================= */
 const VISTAS = {proyectos:'pProy', agenda:'pAgenda', calendario:'pAgenda', creaciones:'pCrea', documentos:'pCrea', notas:'pNotas', ajustes:'pAj', configuracion:'pAj'};
 async function goView(v, extra = {}){
@@ -1240,17 +1335,26 @@ async function quickNav(text){
 
 /* ================= Flujo principal ================= */
 async function handle(text){
-  text = String(text).trim(); if (!text || busy) return;
+  text = String(text || '').trim();
+  const atts = pendingAtts.filter(a => !a.loading);
+  if (busy || (!text && !atts.length)) return;
+  if (pendingAtts.some(a => a.loading)){ addMsg('e', 'Espera un segundo: todavía estoy leyendo el archivo.'); return; }
+  if (!text) text = atts.length > 1 ? 'Analiza estos archivos.' : 'Analiza este archivo.';
   const n = norm(text);
   if (/^(silencio|para|detente|calla|callate|stop)$/.test(n)){ stopSpeaking(); return; }
   endConv = /^(gracias|muchas gracias|eso es todo|eso seria todo|nada mas|listo gracias|chao|adios|hasta luego|terminamos|ya esta|ok gracias)( kai)?$/.test(n);
   if (endConv){ addMsg('u', text); const bye = 'De nada. Aquí estaré.'; addMsg('a', bye); disarm(); await speak(bye); return; }
-  if (await quickNav(text)) return;
+  if (!atts.length && await quickNav(text)) return;
   if (!wakeOn) stopRec();
-  busy = true; addMsg('u', text); showTyping(); setState('thinking', 'Pensando…'); vStatus('Pensando…');
+  busy = true; const um = addMsg('u', text);
+  if (atts.length){ um.insertAdjacentHTML('afterbegin', `<div class="thumbs">${atts.map(a => a.thumb ? `<img src="${a.thumb}" alt="">` : `<span class="fn">📎 ${esc(a.name)}</span>`).join('')}</div>`); pendingAtts = []; renderAtts(); }
+  showTyping(); setState('thinking', 'Pensando…'); vStatus('Pensando…');
   const t0 = Date.now(), tick = setInterval(() => { const s = Math.round((Date.now() - t0) / 1000); if (s >= 3){ hint.textContent = `Pensando… ${s} s`; if (vCur && /^Pensando|^⚙/.test($('vMsg').textContent)) vStatus(`Pensando… ${s} s`); } }, 1000);
   let reply;
-  try { reply = cfg.apiKey ? await askClaude(text) : await localCommand(text); }
+  try {
+    if (atts.length && !cfg.apiKey) throw new Error('Para analizar fotos y archivos necesito tu API key en Ajustes.');
+    reply = cfg.apiKey ? await askClaude(atts.length ? [...attBlocks(atts), {type:'text', text}] : text) : await localCommand(text);
+  }
   catch(err){
     const msg = err.message || 'Algo falló.';
     clearInterval(tick); addMsg('e', msg); busy = false;
@@ -1261,7 +1365,7 @@ async function handle(text){
   if (reply){ addMsg('a', reply, {animate:true}); hint.textContent = ''; if (vCur) $('vMsg').textContent = reply.split('\n')[0].slice(0, 220); followUp = !endConv && (cfg.followUp === 'siempre' || (cfg.followUp !== 'nunca' && /\?\s*$/.test(reply.trim()))); await speak(reply); }
   if (wakeOn) startRec();
   if (!speaking && !armed) setState(wakeOn ? 'listening' : 'idle', wakeOn ? `Di «${cfg.wake}» cuando me necesites` : 'Toca el orbe para hablar');
-  kvSet('chatlog', [...log.querySelectorAll('.msg.u,.msg.a')].slice(-40).map(d => ({r:d.classList.contains('u') ? 'u' : 'a', t:d.dataset.raw || d.textContent})));
+  kvSet('chatlog', [...log.querySelectorAll('.msg.u,.msg.a')].slice(-40).map(d => ({r:d.classList.contains('u') ? 'u' : 'a', t:d.dataset.raw || (d.querySelector('.thumbs') ? '📎 ' : '') + [...d.childNodes].filter(x => x.nodeType === 3).map(x => x.textContent).join('')})));
 }
 
 /* ================= Eventos ================= */

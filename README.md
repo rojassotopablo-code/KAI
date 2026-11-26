@@ -56,6 +56,13 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v3.4 — Fotos y archivos
+- Botón 📎 al lado del cuadro de texto (también dentro de una creación abierta). En el celular permite sacar una foto con la cámara o elegirla de la galería.
+- Acepta **fotos**, **PDF**, **Excel** (.xlsx/.xls), **Word** (.docx) y archivos de texto (.txt, .csv, .md, .json), hasta 15 MB cada uno y varios a la vez.
+- En el PC también puedes **pegar** una imagen (Ctrl+V) o **arrastrar** archivos a la ventana.
+- Adjuntas y luego hablas o escribes qué hacer: «¿qué ves en esta foto?», «resume este PDF», «convierte este documento en un procedimiento», «haz un informe de hallazgo con esta foto», «analiza esta planilla y dime qué turno tiene más horas».
+- Las fotos se achican antes de enviarse para que sea rápido y barato. KAI recuerda los adjuntos de los últimos mensajes para seguir conversando sobre ellos.
+
 ## Cambios v3.3
 - **Conversación continua:** toca el orbe una vez (o di «KAI») y conversa de corrido. Después de cada respuesta KAI sigue escuchando sin que repitas su nombre. Termina cuando dices «gracias», «eso es todo» o «chao», o tras 15 segundos de silencio (se ajusta en Ajustes).
 - **Navegación por voz:** «abre la agenda», «muéstrame los proyectos», «ve a creaciones», «vuelve al inicio», «cierra». Las órdenes cortas se ejecutan al instante; las más complejas («muéstrame la reunión del viernes») las resuelve Claude.
