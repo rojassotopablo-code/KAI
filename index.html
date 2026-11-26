@@ -39,22 +39,9 @@ header{display:flex;align-items:center;gap:12px;padding:14px 0}
 /* Orbe */
 .stage{display:grid;place-items:center;padding:8px 0 4px;flex:none;transition:padding .3s}
 .orb{position:relative;width:min(62vw,260px);transition:width .35s ease;aspect-ratio:1;border:0;background:none;padding:0;border-radius:50%}
-.orb i{position:absolute;inset:0;border-radius:50%;border:2px solid var(--cy);opacity:.55}
-.orb i:nth-child(1){inset:0;border-style:dashed;animation:spin 24s linear infinite}
-.orb i:nth-child(2){inset:12%;border-width:3px;opacity:.8;border-color:var(--cy) transparent var(--cy) transparent;animation:spin 9s linear infinite reverse}
-.orb i:nth-child(3){inset:26%;opacity:.5}
-.orb b{position:absolute;inset:36%;border-radius:50%;background:radial-gradient(circle,#e8fbff 0%,#7fe9ff 35%,#0aa6d6 70%,transparent 72%);
-  box-shadow:0 0 40px #46dcffaa,0 0 90px #46dcff55;transition:transform .25s}
-.orb[data-s=listening] b{animation:pulse 1s ease-in-out infinite}
-.orb[data-s=armed] b{animation:pulse .6s ease-in-out infinite;box-shadow:0 0 60px #fff,0 0 120px #46dcffcc}
-.orb[data-s=thinking] i:nth-child(2){animation-duration:1.4s}
-.orb[data-s=thinking] b{background:radial-gradient(circle,#fff6e0 0%,#ffd27f 40%,#e08a00 70%,transparent 72%);box-shadow:0 0 50px #ffb347aa}
-.orb[data-s=speaking] b{animation:talk .35s ease-in-out infinite alternate}
-.orb[data-s=off] b{filter:grayscale(.8) brightness(.6)}
-@keyframes spin{to{transform:rotate(360deg)}}
-@keyframes pulse{50%{transform:scale(1.12)}}
-@keyframes talk{to{transform:scale(1.18)}}
-@media (prefers-reduced-motion:reduce){.orb *{animation:none!important}}
+.orb canvas{position:absolute;inset:-14%;width:128%;height:128%;pointer-events:none}
+.orb:focus-visible{outline-offset:-6px}
+
 .hint{font-family:Rajdhani,sans-serif;font-size:18px;color:var(--mute);text-align:center;margin:10px 0 0;min-height:27px}
 .heard{color:var(--ink)}
 
@@ -253,7 +240,7 @@ a{color:var(--cy)}
   </header>
 
   <div class="stage">
-    <button class="orb" id="orb" data-s="off" aria-label="Tocar para hablar"><i></i><i></i><i></i><b></b></button>
+    <button class="orb" id="orb" data-s="off" aria-label="Tocar para hablar"><canvas id="orbCv" aria-hidden="true"></canvas></button>
     <p class="hint" id="hint">Toca el orbe o di «KAI»</p>
   </div>
 
@@ -432,7 +419,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v5.0.1 · Servidor</p>
+      <p class="note" id="ver">KAI v5.1 · Orbe 3D</p>
     </div>
   </div>
 </div>
@@ -504,7 +491,86 @@ function fillCfg(){
 
 /* ================= UI ================= */
 const orb = $('orb'), hint = $('hint'), log = $('log');
+/* ================= Orbe 3D ================= */
+// Esfera de partículas con perspectiva, anillos orbitales inclinados y núcleo de energía; reacciona al estado de KAI
+const Orb3D = (() => {
+  const cv = $('orbCv'), ctx = cv.getContext('2d');
+  const N = 520, pts = [];
+  const GA = Math.PI * (3 - Math.sqrt(5)); // distribución uniforme (espiral de Fibonacci)
+  for (let i = 0; i < N; i++){ const y = 1 - (i / (N - 1)) * 2, rr = Math.sqrt(1 - y * y), t = GA * i; pts.push([Math.cos(t) * rr, y, Math.sin(t) * rr, Math.random()]); }
+  const RINGS = [{tx:1.15, tz:.25, n:90, r:1.42, sp:.55}, {tx:-.55, tz:1.0, n:80, r:1.62, sp:-.38}, {tx:.2, tz:-.9, n:70, r:1.82, sp:.24}];
+  const PAL = {
+    off:{a:[70, 140, 170], b:[30, 70, 90], glow:.25, speed:.15, exp:0, wave:0},
+    idle:{a:[70, 220, 255], b:[20, 110, 200], glow:.55, speed:.25, exp:0, wave:0},
+    listening:{a:[90, 230, 255], b:[40, 130, 255], glow:.75, speed:.35, exp:.03, wave:.01},
+    armed:{a:[170, 245, 255], b:[60, 160, 255], glow:1.1, speed:.55, exp:.10, wave:.035},
+    thinking:{a:[255, 200, 110], b:[255, 120, 40], glow:.9, speed:1.6, exp:.02, wave:.02},
+    speaking:{a:[120, 240, 255], b:[150, 90, 255], glow:1.0, speed:.5, exp:.06, wave:.16}
+  };
+  let st = 'off', cur = {...PAL.off, a:[...PAL.off.a], b:[...PAL.off.b]}, rotY = 0, rotX = .35, t0 = performance.now(), last = t0, raf = 0, W = 0, H = 0, dpr = 1;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const mix = (x, y, k) => x + (y - x) * k;
+  function resize(){ dpr = Math.min(2, window.devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  new ResizeObserver(resize).observe(cv); resize();
+  const rot = (x, y, z, ax, ay) => { // giro en X y luego en Y
+    const cy = Math.cos(ax), sy = Math.sin(ax), y1 = y * cy - z * sy, z1 = y * sy + z * cy;
+    const cx = Math.cos(ay), sx = Math.sin(ay); return [x * cx + z1 * sx, y1, -x * sx + z1 * cx];
+  };
+  function frame(now){
+    raf = requestAnimationFrame(frame);
+    if (document.hidden || !W) return;
+    const dt = Math.min(.05, (now - last) / 1000); last = now; const t = (now - t0) / 1000;
+    const goal = PAL[st] || PAL.idle, k = Math.min(1, dt * 4);
+    for (const key of ['glow','speed','exp','wave']) cur[key] = mix(cur[key], goal[key], k);
+    for (let i = 0; i < 3; i++){ cur.a[i] = mix(cur.a[i], goal.a[i], k); cur.b[i] = mix(cur.b[i], goal.b[i], k); }
+    rotY += dt * cur.speed * (reduce ? .3 : 1); rotX = .35 + Math.sin(t * .3) * .12;
+    const cx = W / 2, cy = H / 2, R = Math.min(W, H) * .27 * (1 + cur.exp + (st === 'armed' ? Math.sin(t * 6) * .02 : 0));
+    const persp = 3.2, s = dpr;
+    ctx.setTransform(s, 0, 0, s, 0, 0); ctx.clearRect(0, 0, W, H);
+    // halo exterior
+    const ca = cur.a.map(Math.round), cb = cur.b.map(Math.round);
+    let g = ctx.createRadialGradient(cx, cy, R * .2, cx, cy, R * 2.3);
+    g.addColorStop(0, `rgba(${ca},${.28 * cur.glow})`); g.addColorStop(.45, `rgba(${cb},${.10 * cur.glow})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    const draw = [];
+    // partículas de la esfera (con onda de voz al hablar)
+    for (const [x, y, z, ph] of pts){
+      const w = cur.wave ? 1 + cur.wave * (Math.sin(y * 7 + t * 9) * .6 + Math.sin(x * 5 - t * 7 + ph * 6) * .4) : 1;
+      const p = rot(x * w, y * w, z * w, rotX, rotY), d = persp / (persp - p[2]);
+      draw.push([cx + p[0] * R * d, cy + p[1] * R * d, p[2], d, 0]);
+    }
+    // anillos orbitales inclinados
+    RINGS.forEach((rg, ri) => {
+      for (let i = 0; i < rg.n; i++){
+        const a = i / rg.n * Math.PI * 2 + t * rg.sp * (st === 'thinking' ? 3 : 1);
+        let x = Math.cos(a) * rg.r, y = 0, z = Math.sin(a) * rg.r;
+        let q = rot(x, y, z, rg.tx, rg.tz); q = rot(q[0], q[1], q[2], rotX * .5, rotY * .35);
+        const d = persp / (persp - q[2] * .6);
+        draw.push([cx + q[0] * R * d, cy + q[1] * R * d, q[2] * .6, d, ri + 1]);
+      }
+    });
+    draw.sort((u, v) => u[2] - v[2]); // de atrás hacia adelante
+    for (const [px, py, z, d, ring] of draw){
+      const depth = (z + 1.2) / 2.4, a = Math.max(.08, Math.min(1, depth)) * (ring ? .55 : .9) * Math.min(1.4, .6 + cur.glow * .6);
+      const col = ring ? cb : [0, 1, 2].map(i => Math.round(mix(cb[i], ca[i], depth)));
+      const sz = (ring ? .9 : 1.25) * d * (R / 70) * (.6 + depth * .9);
+      ctx.fillStyle = `rgba(${col},${a.toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(px, py, Math.max(.45, sz), 0, 6.283); ctx.fill();
+    }
+    // núcleo de energía
+    const pulse = st === 'speaking' ? .8 + Math.abs(Math.sin(t * 11)) * .5 : st === 'armed' ? 1 + Math.sin(t * 8) * .15 : 1 + Math.sin(t * 2) * .05;
+    g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * .62 * pulse);
+    g.addColorStop(0, `rgba(255,255,255,${.95 * Math.min(1, cur.glow + .2)})`); g.addColorStop(.25, `rgba(${ca},${.75 * cur.glow})`); g.addColorStop(.6, `rgba(${cb},${.25 * cur.glow})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R * .62 * pulse, 0, 6.283); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  raf = requestAnimationFrame(frame);
+  return {set(s){ st = PAL[s] ? s : 'idle'; }};
+})();
+
 function setState(s, text){
+  Orb3D.set(s);
   const vm = document.getElementById('vMic'); if (vm) vm.classList.toggle('rec', s === 'armed' || s === 'thinking');
   orb.dataset.s = s;
   const labels = {off:'En reposo', idle:'En reposo', listening:`Escuchando «${cfg.wake}»…`, armed:'Te escucho…', thinking:'Pensando…', speaking:'Hablando…'};
