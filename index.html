@@ -26,7 +26,8 @@ body{margin:0;background:radial-gradient(1200px 700px at 50% 20%,#0d2238 0%,var(
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--cy);outline-offset:2px}
-.app{max-width:900px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;padding:0 16px}
+.app{position:relative;max-width:900px;margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;padding:0 16px;overflow:hidden}
+body{overflow:hidden}
 header{display:flex;align-items:center;gap:12px;padding:14px 0}
 .brand{font-family:Rajdhani,sans-serif;font-weight:700;font-size:26px;letter-spacing:.12em;color:var(--cy)}
 .status{flex:1;color:var(--mute);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -36,8 +37,8 @@ header{display:flex;align-items:center;gap:12px;padding:14px 0}
 .ib.on{border-color:var(--cy);color:var(--cy);box-shadow:0 0 14px #46dcff55}
 
 /* Orbe */
-.stage{display:grid;place-items:center;padding:8px 0 4px}
-.orb{position:relative;width:min(62vw,260px);aspect-ratio:1;border:0;background:none;padding:0;border-radius:50%}
+.stage{display:grid;place-items:center;padding:8px 0 4px;flex:none;transition:padding .3s}
+.orb{position:relative;width:min(62vw,260px);transition:width .35s ease;aspect-ratio:1;border:0;background:none;padding:0;border-radius:50%}
 .orb i{position:absolute;inset:0;border-radius:50%;border:2px solid var(--cy);opacity:.55}
 .orb i:nth-child(1){inset:0;border-style:dashed;animation:spin 24s linear infinite}
 .orb i:nth-child(2){inset:12%;border-width:3px;opacity:.8;border-color:var(--cy) transparent var(--cy) transparent;animation:spin 9s linear infinite reverse}
@@ -58,7 +59,18 @@ header{display:flex;align-items:center;gap:12px;padding:14px 0}
 .heard{color:var(--ink)}
 
 /* Chat */
-.log{flex:1;display:flex;flex-direction:column;gap:10px;padding:16px 0;overflow-y:auto;min-height:160px}
+.log{flex:1;display:flex;flex-direction:column;gap:10px;padding:12px 2px 16px;overflow-y:auto;min-height:0;overscroll-behavior:contain}
+.log>:first-child{margin-top:auto}
+/* Con conversación en curso el orbe se achica para dar espacio al diálogo */
+.app.chat .orb{width:min(26vw,104px)}
+.app.chat .stage{padding:0}
+.app.chat .hint{font-size:15px;margin-top:4px;min-height:22px}
+.typing{align-self:flex-start;display:flex;gap:5px;padding:12px 14px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.typing i{width:7px;height:7px;border-radius:50%;background:var(--cy);animation:blink 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.tobot{position:absolute;right:20px;bottom:84px;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--cy);display:none;place-items:center;font-size:18px;z-index:2}
+.tobot.on{display:grid}
 .msg{max-width:85%;padding:10px 14px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere}
 .msg.u{align-self:flex-end;background:#12304d;border:1px solid #1f4c74}
 .msg.a{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
@@ -67,7 +79,7 @@ header{display:flex;align-items:center;gap:12px;padding:14px 0}
 .empty{color:var(--mute);text-align:center;font-size:15px;margin:auto 0}
 .empty b{color:var(--ink);font-weight:500}
 
-.bar{position:sticky;bottom:0;display:flex;gap:8px;padding:12px 0 16px;background:linear-gradient(transparent,var(--bg) 30%)}
+.bar{flex:none;display:flex;gap:8px;padding:10px 0 max(14px,env(safe-area-inset-bottom))}
 .bar input{flex:1;height:48px;border-radius:14px;border:1px solid var(--line);background:var(--bg2);padding:0 14px;font-size:16px}
 .mic{width:48px;height:48px;border-radius:14px;border:0;background:var(--cy);color:#04202c;display:grid;place-items:center}
 .mic svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2}
@@ -204,7 +216,8 @@ a{color:var(--cy)}
     <p class="hint" id="hint">Toca el orbe o di «KAI»</p>
   </div>
 
-  <div class="log" id="log"></div>
+  <div class="log" id="log" aria-live="polite"></div>
+  <button class="tobot" id="toBot" type="button" aria-label="Ir al final">↓</button>
 
   <form class="bar" id="form">
     <input id="txt" placeholder="Escribe o habla…" autocomplete="off" aria-label="Mensaje">
@@ -292,7 +305,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v3.0 · Fase 3</p>
+      <p class="note" id="ver">KAI v3.1 · Fase 3</p>
     </div>
   </div>
 </div>
@@ -389,15 +402,42 @@ function miniMD(src){
   }
   return out.join('');
 }
-function addMsg(role, text){
+let stick = true, autoAt = 0; // seguir el final de la conversación salvo que el usuario haya subido a leer
+function scrollLog(force){
+  if (force) stick = true;
+  if (!stick) { $('toBot').classList.add('on'); return; }
+  requestAnimationFrame(() => { autoAt = Date.now(); log.scrollTop = log.scrollHeight; });
+}
+function chatMode(){ $('log').parentElement.classList.toggle('chat', !!log.querySelector('.msg.u,.msg.a')); }
+function addMsg(role, text, opts = {}){
   const e = log.querySelector('.empty'); if (e) e.remove();
+  hideTyping();
   const d = document.createElement('div');
   d.className = 'msg ' + role;
-  if (role === 'a'){ d.classList.add('md'); d.dataset.raw = text; d.innerHTML = renderMD(text); d.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; }); } else d.textContent = text;
-  log.appendChild(d); log.scrollTop = log.scrollHeight;
+  if (role === 'a'){
+    d.classList.add('md'); d.dataset.raw = text;
+    const fin = () => { d.innerHTML = renderMD(text); d.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; }); scrollLog(); };
+    if (opts.animate && text.length < 4000 && !matchMedia('(prefers-reduced-motion: reduce)').matches){
+      // la respuesta va apareciendo palabra por palabra y la pantalla la sigue
+      const words = text.split(/(\s+)/); let k = 0;
+      const step = Math.max(1, Math.ceil(words.length / 90));
+      const tick = () => { k += step * 2; d.innerHTML = renderMD(words.slice(0, k).join('')); scrollLog(); if (k < words.length) setTimeout(tick, 18); else fin(); };
+      tick();
+    } else fin();
+  } else d.textContent = text;
+  log.appendChild(d); chatMode(); scrollLog(role === 'u');
   return d;
 }
+function showTyping(){ hideTyping(); const t = document.createElement('div'); t.className = 'typing'; t.id = 'typing'; t.innerHTML = '<i></i><i></i><i></i>'; log.appendChild(t); scrollLog(); }
+function hideTyping(){ const t = document.getElementById('typing'); if (t) t.remove(); }
+log.addEventListener('scroll', () => {
+  const near = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+  if (Date.now() - autoAt < 300 && !near) return; // desplazamiento hecho por KAI, no por el usuario
+  stick = near; if (near) $('toBot').classList.remove('on');
+}, {passive:true});
+$('toBot').addEventListener('click', () => { $('toBot').classList.remove('on'); scrollLog(true); });
 function emptyLog(){
+  log.parentElement.classList.remove('chat');
   log.innerHTML = `<div class="empty">Prueba: <b>«KAI, crea un procedimiento de cambio de polines»</b> · <b>«Agenda reunión el jueves a las 10»</b> · <b>«Arma un plan para el quincho»</b><br><b>«¿Qué tengo pendiente hoy?»</b> · <b>«Completa la tarea comprar cemento del quincho»</b></div>`;
 }
 
@@ -1083,7 +1123,7 @@ async function askClaude(text, retried){
         try { out = await (actions[u.name] ? actions[u.name](u.input) : {error:'Herramienta desconocida'}); }
         catch(err){ out = {error:String(err)}; }
         const lbl = u.input.titulo || u.input.nombre || u.input.proyecto || u.input.creacion || u.input.evento || '';
-        addMsg('s', '⚙ ' + u.name.replace(/_/g,' ') + (lbl ? ' · ' + lbl : ''));
+        addMsg('s', '⚙ ' + u.name.replace(/_/g,' ') + (lbl ? ' · ' + lbl : '')); showTyping();
         results.push({type:'tool_result', tool_use_id:u.id, content:JSON.stringify(out ?? {ok:true})});
       }
       history.push({role:'user', content:results});
@@ -1148,7 +1188,7 @@ async function handle(text){
   const n = norm(text);
   if (/^(silencio|para|detente|calla|callate|stop)$/.test(n)){ stopSpeaking(); return; }
   if (!wakeOn) stopRec();
-  busy = true; addMsg('u', text); setState('thinking', 'Pensando…');
+  busy = true; addMsg('u', text); showTyping(); setState('thinking', 'Pensando…');
   let reply;
   try { reply = cfg.apiKey ? await askClaude(text) : await localCommand(text); }
   catch(err){
@@ -1157,7 +1197,8 @@ async function handle(text){
     setState(wakeOn ? 'listening' : 'idle', 'Algo falló'); await speak(msg); return;
   }
   busy = false;
-  if (reply){ addMsg('a', reply); hint.textContent = ''; if (vCur) $('vMsg').textContent = reply.split('\n')[0].slice(0, 220); followUp = cfg.followUp === 'siempre' || (cfg.followUp !== 'nunca' && /\?\s*$/.test(reply.trim())); await speak(reply); }
+  hideTyping();
+  if (reply){ addMsg('a', reply, {animate:true}); hint.textContent = ''; if (vCur) $('vMsg').textContent = reply.split('\n')[0].slice(0, 220); followUp = cfg.followUp === 'siempre' || (cfg.followUp !== 'nunca' && /\?\s*$/.test(reply.trim())); await speak(reply); }
   if (wakeOn) startRec();
   if (!speaking) setState(wakeOn ? 'listening' : 'idle', wakeOn ? `Di «${cfg.wake}» cuando me necesites` : 'Toca el orbe para hablar');
   kvSet('chatlog', [...log.querySelectorAll('.msg.u,.msg.a')].slice(-40).map(d => ({r:d.classList.contains('u') ? 'u' : 'a', t:d.dataset.raw || d.textContent})));
@@ -1328,7 +1369,7 @@ async function checkFiles(){
   try { db = await openDB(); } catch(_){ addMsg('e', 'No pude abrir el almacenamiento local de este navegador.'); return; }
   await loadCfg(); fillCfg(); if ('speechSynthesis' in window) loadVoices();
   const saved = await kvGet('chatlog', []);
-  if (saved.length) saved.forEach(m => addMsg(m.r, m.t)); else emptyLog();
+  if (saved.length){ saved.forEach(m => addMsg(m.r, m.t)); setTimeout(() => scrollLog(true), 100); } else emptyLog();
   initRec();
   if (!SR) addMsg('s', 'Este navegador no reconoce voz. Usa Chrome o Edge para hablar con KAI.');
   if (!cfg.apiKey) addMsg('s', 'Modo básico: agrega tu API key en ☰ › Ajustes para conversar libremente.');
