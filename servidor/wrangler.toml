@@ -1,0 +1,8 @@
+name = "kai-servidor"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+# No necesita dirección web pública: trabaja con tareas programadas
+workers_dev = false
+
+[triggers]
+crons = ["*/5 * * * *"]

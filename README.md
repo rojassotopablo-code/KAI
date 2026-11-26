@@ -56,6 +56,23 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v5.0 — Servidor de KAI: notificaciones y rutinas
+- **Servidor propio en Cloudflare (gratis):** revisa tus datos cada 5 minutos y te avisa **aunque KAI esté cerrado**. No guarda nada propio (todo sigue en tu repositorio privado `kai-datos`) y no necesita tu API key de Claude.
+- **Notificaciones reales** en el celular y el PC: recordatorios de eventos, publicaciones programadas, resumen del día y alertas.
+- **Rutinas** (Ajustes › Servidor, notificaciones y rutinas, o por voz):
+  - *Resumen del día*: agenda, tareas vencidas y KPIs por registrar.
+  - *Alerta de KPIs*: solo avisa si alguno quedó fuera de meta.
+  - *Encargo a KAI*: por ejemplo «cada lunes 8:30 informe semanal de KPIs»; tocas la notificación y KAI lo prepara.
+  - *Recordatorio*: mensaje fijo («los viernes 17:00 enviar reporte de turno»).
+- **Se publica solo:** el código del servidor está en `servidor/` y GitHub Actions lo despliega en Cloudflare con cada cambio.
+
+### Instalación del servidor (una vez)
+1. Cuenta gratis en Cloudflare → *API Tokens* → *Create Token* → plantilla **Edit Cloudflare Workers** → copiar la llave. Copiar también el **Account ID**.
+2. Llave de GitHub con acceso a `kai-datos` (*Contents: Read and write*).
+3. En este repositorio: *Settings › Secrets and variables › Actions* → crear `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` y `KAI_DATOS_TOKEN`.
+4. *Actions › Desplegar servidor de KAI › Run workflow*.
+5. En KAI (en cada dispositivo): Ajustes › **Activar notificaciones en este dispositivo** → **Enviar prueba**.
+
 ## Cambios v4.3 — Tareas largas, deshacer y confirmaciones
 - **Modo tarea larga:** para encargos grandes («prepárame todo para la auditoría del lunes», «arma la campaña de diciembre») KAI muestra un plan con pasos, los marca a medida que avanza, revisa su trabajo al final y entrega un resumen. Botón **Detener** en cualquier momento.
 - **Deshacer:** todo lo que KAI cambia queda registrado. Bajo cada respuesta con cambios aparece «↩ Deshacer los N cambios de esta respuesta»; también por voz: «KAI, deshaz eso». Historial completo en Ajustes › Actividad de KAI, con deshacer por acción.

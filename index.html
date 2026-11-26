@@ -358,6 +358,23 @@ a{color:var(--cy)}
         <button class="btn" id="testVoice">Probar voz</button>
       </div>
 
+      <h3>Servidor, notificaciones y rutinas</h3>
+      <div class="card"><div class="t"><strong id="srvState">Revisando servidor…</strong></div><div class="small" id="srvInfo">El servidor revisa tus datos cada 5 minutos y te avisa aunque KAI esté cerrado.</div></div>
+      <div class="row"><button class="btn p" id="pushOn" type="button">Activar notificaciones en este dispositivo</button><button class="btn" id="pushTest" type="button">Enviar prueba</button></div>
+      <details style="margin-top:8px"><summary class="small" style="cursor:pointer">Cómo instalar el servidor (una vez, ~10 min)</summary>
+        <ol class="small" style="padding-left:18px;margin:10px 0">
+          <li>Crea una cuenta gratis en <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener">Cloudflare</a>.</li>
+          <li>En Cloudflare: <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">API Tokens</a> › <i>Create Token</i> › plantilla <b>Edit Cloudflare Workers</b> › <i>Use template</i> › en <i>Account Resources</i> elige tu cuenta › <i>Continue</i> › <i>Create Token</i>. Copia la llave.</li>
+          <li>Copia tu <b>Account ID</b>: en el <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">panel de Cloudflare</a>, menú de la cuenta (⋯ junto al nombre) › <i>Copy account ID</i>, o en <i>Workers &amp; Pages</i>, columna derecha.</li>
+          <li>Crea una llave de GitHub para el servidor: <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">abrir GitHub</a> › <i>Only select repositories › kai-datos</i> › <i>Permissions › Contents: Read and write</i> › <i>Generate token</i> (o la clásica con <b>repo</b>).</li>
+          <li>En tu repositorio KAI de GitHub: <i>Settings › Secrets and variables › Actions › New repository secret</i>, crea estos tres: <b>CLOUDFLARE_API_TOKEN</b>, <b>CLOUDFLARE_ACCOUNT_ID</b> y <b>KAI_DATOS_TOKEN</b>.</li>
+          <li>En el repositorio KAI: pestaña <i>Actions › Desplegar servidor de KAI › Run workflow</i>. Cuando quede en verde, vuelve aquí y toca «Enviar prueba».</li>
+        </ol>
+      </details>
+      <div id="rutList" style="margin-top:10px"></div>
+      <div class="row"><button class="btn sm" id="rutResumen" type="button">+ Resumen diario 7:00 (lun a vie)</button><button class="btn sm" id="rutKpi" type="button">+ Alerta de KPIs en rojo 8:00</button><button class="btn sm" id="rutInforme" type="button">+ Informe semanal lunes 8:30</button></div>
+      <p class="note">O pídelas por voz: «KAI, todos los viernes a las 17 recuérdame enviar el reporte de turno».</p>
+
       <h3>Gasto de Claude</h3>
       <div class="card" id="usoCard"><div class="small">Cargando…</div></div>
       <label for="tope">Tope mensual (US$): KAI deja de consultar a Claude al llegar</label>
@@ -415,7 +432,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v4.3 · Fase 5</p>
+      <p class="note" id="ver">KAI v5.0 · Servidor</p>
     </div>
   </div>
 </div>
@@ -443,10 +460,10 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6
 let db;
 function openDB(){
   return new Promise((res, rej) => {
-    const r = indexedDB.open('jarvis', 7);
+    const r = indexedDB.open('jarvis', 8);
     r.onupgradeneeded = () => {
       const d = r.result;
-      ['proyectos','notas','kv','creaciones','eventos','borrados','kpis','kpireg','contactos','memoria','uso','actividad'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
+      ['proyectos','notas','kv','creaciones','eventos','borrados','kpis','kpireg','contactos','memoria','uso','actividad','rutinas'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -457,7 +474,7 @@ const dbAll = store => new Promise(r => { const q = tx(store).getAll(); q.onsucc
 const dbPutRaw = (store, v) => new Promise(r => { const q = tx(store,'readwrite').put(v); q.onsuccess = () => r(v); q.onerror = () => r(null); });
 const dbDelRaw = (store, id) => new Promise(r => { const q = tx(store,'readwrite').delete(id); q.onsuccess = q.onerror = () => r(); });
 // Los datos que se sincronizan llevan la hora de su último cambio; los borrados dejan una marca para borrarse también en el otro dispositivo
-const SYNCED = ['proyectos','notas','eventos','creaciones','kpis','kpireg','contactos','memoria','uso'];
+const SYNCED = ['proyectos','notas','eventos','creaciones','kpis','kpireg','contactos','memoria','uso','rutinas'];
 const dbGet = (store, id) => new Promise(r => { const q = tx(store).get(id); q.onsuccess = () => r(q.result || null); q.onerror = () => r(null); });
 // Grabadora: mientras KAI ejecuta una acción, guarda cómo estaba cada dato antes de cambiarlo (para poder deshacer)
 let recorder = null;
@@ -796,6 +813,8 @@ const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '';
 const PRI = ['alta','media','baja'], EST = ['activo','pausado','terminado'];
 const FREQ = {diaria:1, semanal:7, mensual:30, trimestral:91, anual:365};
 const CANALES = {whatsapp:'WhatsApp', correo:'Correo', linkedin:'LinkedIn', facebook:'Facebook', instagram:'Instagram', x:'X (Twitter)', compartir:'Compartir'};
+const DIAS_K = ['lun','mar','mie','jue','vie','sab','dom'];
+const TIPO_RUT = {resumen:'Resumen del día', recordatorio:'Recordatorio', tarea_kai:'Encargo a KAI', alerta_kpi:'Alerta de KPIs'};
 const TIPOS = {documento:'Documento', presentacion:'Presentación', excel:'Excel', app:'App', tabla:'Tabla', codigo:'Código'};
 
 function normTask(t){
@@ -1001,6 +1020,26 @@ const actions = {
     const ok = await goView(vista, {fecha, proyecto, creacion, kpi});
     return ok ? {ok:true, vista} : {error:'Vista no encontrada'};
   },
+  async crear_rutina({nombre, tipo = 'recordatorio', hora, dias = [], mensaje = '', instruccion = ''}){
+    if (!/^\d{1,2}:\d{2}$/.test(hora || '')) return {error:'Falta la hora en formato HH:MM'};
+    if (!TIPO_RUT[tipo]) tipo = 'recordatorio';
+    const ds = (dias || []).map(d => norm(d).slice(0, 3)).filter(d => DIAS_K.includes(d));
+    const x = {id:uid(), nombre:nombre || TIPO_RUT[tipo], tipo, hora:hora.padStart(5, '0'), dias:ds, mensaje, instruccion, activa:true, creado:new Date().toISOString()};
+    await dbPut('rutinas', x); renderRut();
+    const notif = !!cfg.pushOn;
+    return {ok:true, rutina:{nombre:x.nombre, hora:x.hora, dias:diasTxt(ds)}, aviso:notif ? undefined : 'Para que llegue con KAI cerrado, el usuario debe activar las notificaciones e instalar el servidor (Ajustes › Servidor, notificaciones y rutinas).'};
+  },
+  async listar_rutinas(){ return {rutinas:(await allRut()).map(x => ({nombre:x.nombre, tipo:TIPO_RUT[x.tipo], hora:x.hora, dias:diasTxt(x.dias), activa:x.activa !== false}))}; },
+  async modificar_rutina({rutina, activa, hora, dias, nombre, mensaje, instruccion, eliminar}){
+    const x = await findRut(rutina); if (!x) return {error:`No encontré la rutina "${rutina}"`, rutinas:(await allRut()).map(r => r.nombre)};
+    if (eliminar){ await dbDel('rutinas', x.id); renderRut(); return {ok:true, eliminada:x.nombre}; }
+    if (activa !== undefined) x.activa = !!activa;
+    if (/^\d{1,2}:\d{2}$/.test(hora || '')) x.hora = hora.padStart(5, '0');
+    if (Array.isArray(dias)) x.dias = dias.map(d => norm(d).slice(0, 3)).filter(d => DIAS_K.includes(d));
+    for (const [k, v] of Object.entries({nombre, mensaje, instruccion})) if (v !== undefined) x[k] = v;
+    await dbPut('rutinas', x); renderRut();
+    return {ok:true, rutina:{nombre:x.nombre, hora:x.hora, dias:diasTxt(x.dias), activa:x.activa !== false}};
+  },
   async plan_de_trabajo({objetivo, pasos = []}){
     if (!pasos.length) return {error:'Faltan los pasos'};
     maxSteps = Math.min(60, Math.max(20, pasos.length * 4)); // más vueltas para tareas largas
@@ -1099,6 +1138,9 @@ const tools = [
   {name:'registrar_kpi', description:'Registra un valor de un KPI (si no existe el KPI, créalo antes con crear_kpi). Un registro por fecha: si ya hay uno ese día, se reemplaza.', input_schema:S({kpi:{type:'string'}, valor:{type:'number'}, fecha:{type:'string', description:'AAAA-MM-DD; para valores mensuales usa el último día del mes que corresponde'}, nota:{type:'string'}}, ['kpi','valor'])},
   {name:'consultar_kpis', description:'Estado de los KPIs: último valor, meta, promedio, tendencia, % de periodos en meta, si falta registrar e historial. Úsalo antes de analizar o hacer informes.', input_schema:S({kpi:{type:'string', description:'Omitir para todos'}, desde:{type:'string'}, hasta:{type:'string'}})},
   {name:'modificar_kpi', description:'Cambia la definición de un KPI (meta, unidad, sentido, frecuencia, nombre, categoría), borra el registro de una fecha o elimina el KPI completo.', input_schema:S({kpi:{type:'string'}, nombre:{type:'string'}, unidad:{type:'string'}, meta:{type:'number'}, sentido:{type:'string', enum:['mayor','menor']}, frecuencia:{type:'string', enum:Object.keys(FREQ)}, categoria:{type:'string'}, borrar_registro_fecha:{type:'string'}, eliminar:{type:'boolean'}}, ['kpi'])},
+  {name:'crear_rutina', description:'Programa algo que se repite y llega como notificación aunque KAI esté cerrado. tipo: resumen (resumen del día con agenda, tareas vencidas y KPIs pendientes), recordatorio (mensaje fijo), tarea_kai (al tocar la notificación KAI ejecuta la instrucción, por ejemplo un informe semanal), alerta_kpi (avisa solo si hay KPIs fuera de meta).', input_schema:S({nombre:{type:'string'}, tipo:{type:'string', enum:Object.keys(TIPO_RUT)}, hora:{type:'string', description:'HH:MM hora de Chile'}, dias:{type:'array', items:{type:'string', enum:DIAS_K}, description:'Vacío = todos los días'}, mensaje:{type:'string'}, instruccion:{type:'string', description:'Para tarea_kai: lo que KAI debe hacer al tocar el aviso'}}, ['nombre','tipo','hora'])},
+  {name:'listar_rutinas', description:'Lista las rutinas programadas.', input_schema:S({})},
+  {name:'modificar_rutina', description:'Pausa, reactiva, cambia hora, días o texto, o elimina una rutina.', input_schema:S({rutina:{type:'string'}, activa:{type:'boolean'}, hora:{type:'string'}, dias:{type:'array', items:{type:'string', enum:DIAS_K}}, nombre:{type:'string'}, mensaje:{type:'string'}, instruccion:{type:'string'}, eliminar:{type:'boolean'}}, ['rutina'])},
   {name:'plan_de_trabajo', description:'Para encargos grandes con varias partes o entregables (por ejemplo «prepárame todo para la auditoría», «arma la campaña del mes», «organiza la semana del equipo»): muestra al usuario un plan de 3 a 12 pasos antes de empezar. El último paso debe ser revisar y corregir el trabajo.', input_schema:S({objetivo:{type:'string'}, pasos:{type:'array', items:{type:'string'}}}, ['objetivo','pasos'])},
   {name:'avance_plan', description:'Marca el avance de un paso del plan activo (numerado desde 1).', input_schema:S({paso:{type:'number'}, estado:{type:'string', enum:['en_curso','hecho','omitido','error']}, nota:{type:'string'}}, ['paso','estado'])},
   {name:'deshacer_ultimo', description:'Deshace todos los cambios que hiciste en tu última respuesta con cambios (cuando el usuario diga «deshaz eso», «vuelve atrás», «no, revierte»).', input_schema:S({})},
@@ -1116,7 +1158,7 @@ const tools = [
 /* ---------- Vistas ---------- */
 let filtro = 'activo', curProj = null, openTask = null;
 const fechaCls = f => !f ? '' : f < hoy() ? 'late' : f === hoy() ? 'today' : '';
-function refreshUI(){ if ($('drawer').classList.contains('open')){ renderMem(); renderUso(); renderAct(); renderProyectos(); renderAgenda(); renderKpis(); renderCrea(); renderNotas(); renderCont(); } }
+function refreshUI(){ if ($('drawer').classList.contains('open')){ renderRut(); renderServidor(); renderMem(); renderUso(); renderAct(); renderProyectos(); renderAgenda(); renderKpis(); renderCrea(); renderNotas(); renderCont(); } }
 
 async function renderProyectos(){
   if (curProj) return renderDetalle();
@@ -1852,6 +1894,7 @@ Cómo responder:
 - Envíos y redes sociales: para mandar algo por WhatsApp o correo, o publicar en LinkedIn, Facebook, Instagram o X, redacta el texto final adaptado al canal y usa preparar_envio (con adjuntar_creacion si corresponde enviar un informe, presentación o Excel). Tú no envías: el usuario toca el botón y confirma en la app; dile «te dejé el envío listo, toca el botón». Si falta el correo o número de un contacto, pídelo y guárdalo con guardar_contacto. Para publicar más tarde usa programar_publicacion.
 - Tareas largas: si el pedido tiene varias partes o entregables, primero llama plan_de_trabajo, luego ejecuta los pasos en orden marcando cada uno con avance_plan, y en el último paso revisa lo que hiciste (relee las creaciones con leer_creacion, verifica cifras, fechas y coherencia) y corrige antes de entregar. Al final resume en 2 o 3 frases qué quedó hecho y dónde verlo. Si avance_plan responde detener, para de inmediato.
 - Todo lo que cambias queda registrado y el usuario puede deshacerlo; algunas acciones importantes (borrar, reescribir completo) le piden confirmación: si no autoriza, no insistas.
+- Rutinas: para cosas que se repiten («todos los días a las 7…», «cada lunes…», «avísame si…») usa crear_rutina; llegan como notificación aunque KAI esté cerrado. Un aviso único con fecha y hora va como evento con crear_evento.
 - Usa las herramientas sin pedir permiso. Si no encuentras algo, lista antes de rendirte. Para "qué tengo hoy" usa resumen_pendientes.
 - Si necesitas información actual (noticias, precios, normativa vigente, datos recientes) y tienes búsqueda web, úsala.
 - Memoria: tienes una memoria persistente del usuario (abajo). Úsala con naturalidad, sin recitarla. ${cfg.autoMem !== false ? 'Cuando el usuario cuente algo durable y útil para el futuro (personas de su equipo y sus roles, mandantes, cómo le gusta que hagas las cosas, decisiones, datos de sus proyectos o de su pyme), guárdalo con recordar sin preguntar y sin anunciarlo largamente. No guardes lo pasajero ni lo que ya está en la memoria.' : 'Solo guarda algo en memoria cuando el usuario lo pida explícitamente («recuerda que…»).'} Nunca guardes contraseñas, llaves, números de tarjetas o cuentas, ni datos de salud. Si el usuario corrige algo que recordabas, usa olvidar y recordar con el dato correcto.`;
@@ -2473,6 +2516,116 @@ async function syncNow(manual){
 // sincroniza al abrir, al volver a la app y cada 2 minutos mientras está abierta
 setInterval(() => { if (syncOn() && document.visibilityState === 'visible') syncNow(); }, 120000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleSync(500); });
+/* ================= Servidor, notificaciones push y rutinas ================= */
+async function ghReadJSON(path){
+  const r = await gh(path, {raw:true});
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`GitHub ${r.status}`);
+  return JSON.parse(await r.text());
+}
+async function ghUpdateJSON(path, fn, message){
+  for (let i = 0; i < 3; i++){
+    const cur = await gh(path); let data = null, sha;
+    if (cur.ok){ const j = await cur.json(); sha = j.sha; const raw = j.content ? b64dec(j.content) : await (await gh(path, {raw:true})).text(); data = JSON.parse(raw || 'null'); }
+    else if (cur.status !== 404) throw new Error(`GitHub ${cur.status}`);
+    const nuevo = await fn(data);
+    const put = await gh(path, {method:'PUT', body:JSON.stringify({message, content:b64enc(JSON.stringify(nuevo, null, 1)), ...(sha ? {sha} : {})})});
+    if (put.ok) return nuevo;
+    if (put.status !== 409 && put.status !== 422) throw new Error(`GitHub ${put.status} al guardar`);
+  }
+  throw new Error('No pude guardar en GitHub (conflicto).');
+}
+async function ensureVapid(cfgS){
+  cfgS = cfgS || {suscripciones:[]};
+  if (!cfgS.vapid){
+    const kp = await crypto.subtle.generateKey({name:'ECDSA', namedCurve:'P-256'}, true, ['sign','verify']);
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey));
+    cfgS.vapid = {publicKey:btoa(String.fromCharCode(...raw)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''), privateJwk:await crypto.subtle.exportKey('jwk', kp.privateKey), subject:location.origin + location.pathname};
+  }
+  cfgS.suscripciones = cfgS.suscripciones || [];
+  return cfgS;
+}
+const b64uToBytes = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); return Uint8Array.from(atob(s + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0)); };
+async function activarPush(){
+  if (!syncOn()) throw new Error('Primero configura la sincronización (más abajo): el servidor lee tus datos desde ahí.');
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Este navegador no permite notificaciones push. Usa Chrome o Edge, con KAI instalado como app.');
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error('No diste permiso de notificaciones. Actívalo en la configuración del sitio en el navegador.');
+  await navigator.serviceWorker.register('sw.js');
+  const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((_, rej) => setTimeout(() => rej(new Error('El service worker no respondió. Cierra y vuelve a abrir KAI.')), 15000))]);
+  let cfgS = await ensureVapid(await ghReadJSON('servidor/config.json'));
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && cfgS.vapid && sub.options && sub.options.applicationServerKey){
+    const cur = new Uint8Array(sub.options.applicationServerKey), want = b64uToBytes(cfgS.vapid.publicKey);
+    if (cur.length !== want.length || cur.some((b, i) => b !== want[i])){ await sub.unsubscribe(); sub = null; }
+  }
+  if (!sub) sub = await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64uToBytes(cfgS.vapid.publicKey)});
+  const j = sub.toJSON(), disp = /Android/i.test(navigator.userAgent) ? 'Celular Android' : /iPhone|iPad/i.test(navigator.userAgent) ? 'iPhone' : 'Computador';
+  await ghUpdateJSON('servidor/config.json', async d => {
+    d = await ensureVapid(d && d.vapid ? d : cfgS);
+    d.suscripciones = d.suscripciones.filter(s => s.endpoint !== j.endpoint);
+    d.suscripciones.push({endpoint:j.endpoint, keys:j.keys, dispositivo:disp, fecha:new Date().toISOString()});
+    return d;
+  }, 'KAI: activar notificaciones en ' + disp);
+  cfg.pushOn = true; await kvSet('cfg', cfg);
+  return disp;
+}
+let srvChecked = 0;
+async function renderServidor(force){
+  if (!$('srvState') || (!force && Date.now() - srvChecked < 60000)) return; srvChecked = Date.now();
+  if (!syncOn()){ $('srvState').textContent = 'Servidor: primero activa la sincronización'; return; }
+  try {
+    const [est, cs] = await Promise.all([ghReadJSON('servidor/estado.json'), ghReadJSON('servidor/config.json')]);
+    const n = cs && cs.suscripciones ? cs.suscripciones.length : 0;
+    if (!est || !est.ultimaEjecucion){ $('srvState').textContent = 'Servidor aún no instalado o sin primera revisión'; $('srvState').style.color = 'var(--warn)'; }
+    else {
+      const min = Math.round((Date.now() - new Date(est.ultimaEjecucion)) / 60000);
+      $('srvState').textContent = min <= 40 ? `Servidor activo ✓ (última revisión hace ${min} min)` : `Servidor sin actividad desde hace ${Math.round(min / 60)} h`;
+      $('srvState').style.color = min <= 40 ? 'var(--ok)' : 'var(--bad)';
+    }
+    $('srvInfo').textContent = `${n} dispositivo${n === 1 ? '' : 's'} con notificaciones${cs && cs.suscripciones ? ': ' + cs.suscripciones.map(s => s.dispositivo).join(', ') : ''}.`;
+  } catch(e){ $('srvState').textContent = 'No pude revisar el servidor: ' + e.message; }
+}
+async function allRut(){ return (await dbAll('rutinas')).sort((a,b) => (a.hora || '').localeCompare(b.hora || '')); }
+async function findRut(q){ const all = await allRut(), n = norm(q || ''); return all.find(x => x.id === q) || all.find(x => norm(x.nombre) === n) || all.find(x => norm(x.nombre).includes(n) || n.includes(norm(x.nombre))); }
+const diasTxt = d => !d || !d.length || d.length === 7 ? 'todos los días' : d.join(', ');
+async function renderRut(){
+  if (!$('rutList')) return;
+  const all = await allRut();
+  $('rutList').innerHTML = all.length ? all.map(x => `<div class="ev"><div class="hr">${esc(x.hora)}</div><div class="b"><strong style="font-weight:600;${x.activa === false ? 'color:var(--mute);text-decoration:line-through' : ''}">${esc(x.nombre)}</strong><div class="meta"><span>${esc(TIPO_RUT[x.tipo] || x.tipo)}</span><span>${esc(diasTxt(x.dias))}</span></div></div>
+    <button class="btn sm" data-rtog="${esc(x.id)}">${x.activa === false ? 'Activar' : 'Pausar'}</button><button class="x" data-rdel="${esc(x.id)}" aria-label="Eliminar">✕</button></div>`).join('') : '<p class="small">Sin rutinas todavía.</p>';
+}
+$('rutList').addEventListener('click', async e => {
+  const t = e.target.closest('[data-rtog]'), d = e.target.closest('[data-rdel]');
+  if (t){ const x = await dbGet('rutinas', t.dataset.rtog); if (x){ x.activa = x.activa === false; await dbPut('rutinas', x); renderRut(); } }
+  if (d){ await dbDel('rutinas', d.dataset.rdel); renderRut(); }
+});
+$('rutResumen').addEventListener('click', () => actions.crear_rutina({nombre:'Resumen del día', tipo:'resumen', hora:'07:00', dias:['lun','mar','mie','jue','vie']}));
+$('rutKpi').addEventListener('click', () => actions.crear_rutina({nombre:'Alerta de KPIs en rojo', tipo:'alerta_kpi', hora:'08:00', dias:[]}));
+$('rutInforme').addEventListener('click', () => actions.crear_rutina({nombre:'Informe semanal de KPIs', tipo:'tarea_kai', hora:'08:30', dias:['lun'], instruccion:'Analiza todos mis KPIs de la última semana y crea un informe ejecutivo en PowerPoint con estado frente a la meta, tendencias, alertas y acciones recomendadas.'}));
+$('pushOn').addEventListener('click', async () => {
+  const b = $('pushOn'); b.textContent = 'Activando…';
+  try { const d = await activarPush(); b.textContent = '✓ Notificaciones activas en este dispositivo'; addMsg('s', `Notificaciones activadas en ${d}.`); renderServidor(true); }
+  catch(e){ b.textContent = 'Activar notificaciones en este dispositivo'; $('srvState').textContent = e.message; $('srvState').style.color = 'var(--bad)'; }
+});
+$('pushTest').addEventListener('click', async () => {
+  try {
+    await ghUpdateJSON('servidor/config.json', async d => { d = await ensureVapid(d); d.probar = new Date().toISOString(); return d; }, 'KAI: prueba de notificación');
+    $('srvInfo').textContent = 'Prueba pedida: la notificación llega en máximo 5 minutos si el servidor está instalado.';
+  } catch(e){ $('srvInfo').textContent = 'No pude pedir la prueba: ' + e.message; }
+});
+// Al tocar una notificación: abrir la vista o ejecutar el encargo de la rutina
+async function abrirDesdeAviso(hash){
+  const m = hash.match(/^#(rutina|vista)=(.+)$/); if (!m) return false;
+  window.history.replaceState(null, '', location.pathname);
+  if (m[1] === 'vista'){ await goView(decodeURIComponent(m[2])); return true; }
+  const r = await findRut(decodeURIComponent(m[2]));
+  if (r){ closeViewer(); $('drawer').classList.remove('open'); setTimeout(() => handle(r.instruccion || r.nombre), 600); }
+  return true;
+}
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.tipo === 'abrir'){ const u = new URL(e.data.url); if (u.hash) abrirDesdeAviso(u.hash); } });
+window.addEventListener('hashchange', () => abrirDesdeAviso(location.hash));
+
 window.addEventListener('hashchange', async () => { if (!location.hash.startsWith('#vincular=')) return; const code = location.hash.slice(10); window.history.replaceState(null, '', location.pathname); try { await applyLink('KAI2:' + code.replace(/^KAI2:/, '')); } catch(e){ addMsg('e', 'No pude vincular: ' + e.message); } });
 window.addEventListener('online', () => scheduleSync(500));
 
@@ -2572,8 +2725,9 @@ async function checkFiles(){
   if (!SR) addMsg('s', 'Este navegador no reconoce voz. Usa Chrome o Edge para hablar con KAI.');
   if (!cfg.apiKey) addMsg('s', 'Modo básico: agrega tu API key en ☰ › Ajustes para conversar libremente.');
   if (cfg.autoWake && SR) toggleWake(true); else updateWakeBtn();
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
   checkFiles(); setTimeout(checkReminders, 3000); fillSync();
+  if (/^#(rutina|vista)=/.test(location.hash)) abrirDesdeAviso(location.hash);
   if (location.hash.startsWith('#vincular=')){
     const code = location.hash.slice(10); window.history.replaceState(null, '', location.pathname); // la llave no queda en la barra ni en el historial
     try { await applyLink('KAI2:' + code.replace(/^KAI2:/, '')); } catch(e){ addMsg('e', 'No pude vincular: ' + e.message); }

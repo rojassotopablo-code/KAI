@@ -1,0 +1,42 @@
+name: Desplegar servidor de KAI
+
+on:
+  push:
+    branches: [main]
+    paths: ['servidor/**', '.github/workflows/servidor.yml']
+  workflow_dispatch:
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Revisar que estén las claves
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DATOS: ${{ secrets.KAI_DATOS_TOKEN }}
+        run: |
+          faltan=""
+          [ -z "$CF_TOKEN" ] && faltan="$faltan CLOUDFLARE_API_TOKEN"
+          [ -z "$CF_ACCOUNT" ] && faltan="$faltan CLOUDFLARE_ACCOUNT_ID"
+          [ -z "$DATOS" ] && faltan="$faltan KAI_DATOS_TOKEN"
+          if [ -n "$faltan" ]; then
+            echo "::warning::Servidor no desplegado. Faltan estos secretos en Settings › Secrets and variables › Actions:$faltan"
+            echo "SALTAR=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Desplegar en Cloudflare
+        if: env.SALTAR != '1'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: servidor
+          secrets: |
+            GH_TOKEN
+            GH_REPO
+        env:
+          GH_TOKEN: ${{ secrets.KAI_DATOS_TOKEN }}
+          GH_REPO: ${{ github.repository_owner }}/kai-datos
