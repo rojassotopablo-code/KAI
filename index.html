@@ -419,7 +419,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v5.1 · Orbe 3D</p>
+      <p class="note" id="ver">KAI v5.2 · Orbe 3D</p>
     </div>
   </div>
 </div>
@@ -1133,6 +1133,35 @@ const actions = {
     renderPlan(); scrollLog();
     return {ok:true, detener:stopTask || undefined};
   },
+  async eliminar({tipo, nombre = '', proyecto = '', fecha = '', todos = false}){
+    const n = norm(nombre), hits = [];
+    const like = t => n && (norm(t).includes(n) || n.includes(norm(t)) || n.split(' ').filter(w => w.length > 3).every(w => norm(t).includes(w)));
+    if (tipo === 'proyecto'){ const p = await findProject(nombre); if (p){ await dbDel('proyectos', p.id); if (curProj === p.id) curProj = null; hits.push(p.nombre); } }
+    else if (tipo === 'tarea'){
+      const p = await findProject(proyecto); if (!p) return {error:`No encontré el proyecto "${proyecto}"`, proyectos:(await allProj()).map(x => x.nombre)};
+      const ts = todos && /complet|hech|termin/.test(n) ? p.tareas.filter(t => t.hecha) : [findTask(p, nombre)].filter(Boolean);
+      if (ts.length){ p.tareas = p.tareas.filter(t => !ts.includes(t)); await saveProj(p); hits.push(...ts.map(t => t.texto)); }
+    }
+    else if (tipo === 'evento'){
+      let evs = (await allEv()).filter(e => (!validDate(fecha) || e.fecha === fecha) && (todos || like(e.titulo)));
+      if (!todos && evs.length > 1){ const fut = evs.filter(e => e.fecha >= hoy()); evs = [(fut[0] || evs[0])]; }
+      if (todos && !validDate(fecha)) return {error:'Para borrar varios eventos indica la fecha'};
+      for (const e of evs){ await dbDel('eventos', e.id); hits.push(`${e.titulo} (${e.fecha})`); }
+    }
+    else if (tipo === 'nota'){
+      const ns = (await dbAll('notas')).filter(x => todos || like(x.texto));
+      if (!todos && ns.length > 1) return {error:'Hay varias notas que coinciden; pide cuál', coincidencias:ns.slice(0, 8).map(x => x.texto)};
+      for (const x of ns){ await dbDel('notas', x.id); hits.push(x.texto.slice(0, 60)); }
+    }
+    else if (tipo === 'creacion'){ const c = await findCrea(nombre); if (c){ if (vCur === c.id) closeViewer(); await dbDel('creaciones', c.id); hits.push(c.titulo); } }
+    else if (tipo === 'kpi'){ const k = await findKpi(nombre); if (k){ for (const x of await regsOf(k.id)) await dbDel('kpireg', x.id); await dbDel('kpis', k.id); if (curKpi === k.id) curKpi = null; hits.push(k.nombre); } }
+    else if (tipo === 'contacto'){ const c = await findCont(nombre); if (c){ await dbDel('contactos', c.id); hits.push(c.nombre); } }
+    else if (tipo === 'rutina'){ const x = await findRut(nombre); if (x){ await dbDel('rutinas', x.id); hits.push(x.nombre); } }
+    else if (tipo === 'memoria'){ const o = await actions.olvidar({buscar:nombre}); return o.error ? o : {ok:true, eliminados:o.olvidados}; }
+    else return {error:'Tipo no válido'};
+    refreshUI(); renderRut && renderRut();
+    return hits.length ? {ok:true, eliminados:hits, nota:'Se puede deshacer con «deshaz eso».'} : {error:`No encontré ${tipo} que coincida con "${nombre}"`};
+  },
   async deshacer_ultimo(){ const r = await undoLast(); return r.n ? {ok:true, deshecho:r.resumen} : {error:'No hay acciones recientes para deshacer'}; },
   async recordar({texto, tipo = 'otro'}){
     if (!texto || texto.length < 3) return {error:'Nada que recordar'};
@@ -1221,6 +1250,7 @@ const tools = [
   {name:'modificar_rutina', description:'Pausa, reactiva, cambia hora, días o texto, o elimina una rutina.', input_schema:S({rutina:{type:'string'}, activa:{type:'boolean'}, hora:{type:'string'}, dias:{type:'array', items:{type:'string', enum:DIAS_K}}, nombre:{type:'string'}, mensaje:{type:'string'}, instruccion:{type:'string'}, eliminar:{type:'boolean'}}, ['rutina'])},
   {name:'plan_de_trabajo', description:'Para encargos grandes con varias partes o entregables (por ejemplo «prepárame todo para la auditoría», «arma la campaña del mes», «organiza la semana del equipo»): muestra al usuario un plan de 3 a 12 pasos antes de empezar. El último paso debe ser revisar y corregir el trabajo.', input_schema:S({objetivo:{type:'string'}, pasos:{type:'array', items:{type:'string'}}}, ['objetivo','pasos'])},
   {name:'avance_plan', description:'Marca el avance de un paso del plan activo (numerado desde 1).', input_schema:S({paso:{type:'number'}, estado:{type:'string', enum:['en_curso','hecho','omitido','error']}, nota:{type:'string'}}, ['paso','estado'])},
+  {name:'eliminar', description:'Elimina algo cuando el usuario lo pide: proyecto, tarea (indica proyecto), evento (con fecha si hay varios), nota, creacion (documento, presentación, Excel, app), kpi (con su historial), contacto, rutina o memoria. todos=true para borrar varias: todas las notas, todos los eventos de una fecha, o las tareas completadas de un proyecto (nombre="completadas"). Siempre se pide confirmación al usuario y se puede deshacer.', input_schema:S({tipo:{type:'string', enum:['proyecto','tarea','evento','nota','creacion','kpi','contacto','rutina','memoria']}, nombre:{type:'string', description:'Nombre, título o texto aproximado'}, proyecto:{type:'string'}, fecha:{type:'string'}, todos:{type:'boolean'}}, ['tipo'])},
   {name:'deshacer_ultimo', description:'Deshace todos los cambios que hiciste en tu última respuesta con cambios (cuando el usuario diga «deshaz eso», «vuelve atrás», «no, revierte»).', input_schema:S({})},
   {name:'recordar', description:'Guarda un dato durable sobre el usuario en la memoria de KAI (persona de su equipo y su rol, preferencia de cómo hacer las cosas, dato de su trabajo, proyecto o pyme). Redáctalo como una frase clara en tercera persona, por ejemplo «Juan Pérez es supervisor del turno 7x7 A».', input_schema:S({texto:{type:'string'}, tipo:{type:'string', enum:['persona','preferencia','trabajo','proyecto','pyme','otro']}}, ['texto'])},
   {name:'olvidar', description:'Borra de la memoria los datos que coincidan con el texto indicado.', input_schema:S({buscar:{type:'string'}}, ['buscar'])},
@@ -1971,6 +2001,7 @@ Cómo responder:
 - KPIs: cuando el usuario diga un valor de un indicador («cumplimiento del programa esta semana 92», «este mes tuvimos 1 incidente»), regístralo con registrar_kpi (créalo antes si no existe, con unidad, meta y sentido razonables) y dile si cumple la meta y cómo va frente al valor anterior. Para análisis o informes usa consultar_kpis primero; para informes crea una presentacion o un excel con los datos reales, sin inventar cifras.
 - Envíos y redes sociales: para mandar algo por WhatsApp o correo, o publicar en LinkedIn, Facebook, Instagram o X, redacta el texto final adaptado al canal y usa preparar_envio (con adjuntar_creacion si corresponde enviar un informe, presentación o Excel). Tú no envías: el usuario toca el botón y confirma en la app; dile «te dejé el envío listo, toca el botón». Si falta el correo o número de un contacto, pídelo y guárdalo con guardar_contacto. Para publicar más tarde usa programar_publicacion.
 - Tareas largas: si el pedido tiene varias partes o entregables, primero llama plan_de_trabajo, luego ejecuta los pasos en orden marcando cada uno con avance_plan, y en el último paso revisa lo que hiciste (relee las creaciones con leer_creacion, verifica cifras, fechas y coherencia) y corrige antes de entregar. Al final resume en 2 o 3 frases qué quedó hecho y dónde verlo. Si avance_plan responde detener, para de inmediato.
+- Para borrar cualquier cosa que el usuario pida eliminar usa la herramienta eliminar (no digas que no puedes): KAI le pedirá confirmación por voz o con botón antes de borrar. Si hay varias coincidencias, pregunta cuál.
 - Todo lo que cambias queda registrado y el usuario puede deshacerlo; algunas acciones importantes (borrar, reescribir completo) le piden confirmación: si no autoriza, no insistas.
 - Rutinas: para cosas que se repiten («todos los días a las 7…», «cada lunes…», «avísame si…») usa crear_rutina; llegan como notificación aunque KAI esté cerrado. Un aviso único con fecha y hora va como evento con crear_evento.
 - Usa las herramientas sin pedir permiso. Si no encuentras algo, lista antes de rendirte. Para "qué tengo hoy" usa resumen_pendientes.
@@ -2038,8 +2069,8 @@ function friendly(e){
 }
 /* ================= Actividad, deshacer, confirmaciones y tareas largas ================= */
 let turnId = null, pendingConfirm = null, stopTask = false, planCard = null, maxSteps = 12;
-const TOOL_TXT = {crear_proyecto:'Creó el proyecto', actualizar_proyecto:'Actualizó el proyecto', agregar_tareas:'Agregó tareas a', actualizar_tarea:'Cambió una tarea de', crear_evento:'Agendó', modificar_evento:'Cambió el evento', crear_creacion:'Creó', modificar_creacion:'Reescribió', editar_creacion:'Editó', crear_nota:'Anotó', crear_kpi:'Creó el KPI', registrar_kpi:'Registró valor en', modificar_kpi:'Cambió el KPI', guardar_contacto:'Guardó el contacto', recordar:'Recordó', olvidar:'Olvidó', programar_publicacion:'Programó publicación'};
-const toolLabel = u => u.input.titulo || u.input.nombre || u.input.proyecto || u.input.creacion || u.input.evento || u.input.kpi || u.input.texto || u.input.buscar || '';
+const TOOL_TXT = {eliminar:'Eliminó', crear_proyecto:'Creó el proyecto', actualizar_proyecto:'Actualizó el proyecto', agregar_tareas:'Agregó tareas a', actualizar_tarea:'Cambió una tarea de', crear_evento:'Agendó', modificar_evento:'Cambió el evento', crear_creacion:'Creó', modificar_creacion:'Reescribió', editar_creacion:'Editó', crear_nota:'Anotó', crear_kpi:'Creó el KPI', registrar_kpi:'Registró valor en', modificar_kpi:'Cambió el KPI', guardar_contacto:'Guardó el contacto', recordar:'Recordó', olvidar:'Olvidó', programar_publicacion:'Programó publicación'};
+const toolLabel = u => u.name === 'eliminar' ? `${u.input.tipo || ''} ${u.input.nombre || (u.input.todos ? '(todas/os)' : '')}`.trim() : u.input.titulo || u.input.nombre || u.input.proyecto || u.input.creacion || u.input.evento || u.input.kpi || u.input.texto || u.input.buscar || '';
 async function logActivity(u, ops){
   const e = {id:uid(), turno:turnId, fecha:new Date().toISOString(), herramienta:u.name, resumen:`${u.input && u.input.eliminar ? 'Eliminó' : (TOOL_TXT[u.name] || u.name.replace(/_/g, ' '))} ${String(toolLabel(u)).slice(0, 80)}`.trim(), ops, deshecho:false};
   await dbPutRaw('actividad', e);
@@ -2071,6 +2102,11 @@ $('actList').addEventListener('click', async e => { const b = e.target.closest('
 // Acciones que requieren tu OK antes de ejecutarse
 function confirmText(u){
   const i = u.input || {};
+  if (u.name === 'eliminar'){
+    const T = {proyecto:'el proyecto', tarea:'la tarea', evento:'el evento', nota:'la nota', creacion:'la creación', kpi:'el KPI (con todo su historial)', contacto:'el contacto', rutina:'la rutina', memoria:'de la memoria lo relacionado con'};
+    if (i.todos) return i.tipo === 'nota' ? 'Eliminar TODAS las notas' : i.tipo === 'evento' ? `Eliminar todos los eventos del ${i.fecha}` : `Eliminar las tareas completadas del proyecto ${i.proyecto}`;
+    return `Eliminar ${T[i.tipo] || i.tipo} «${i.nombre || ''}»${i.tipo === 'tarea' && i.proyecto ? ' del proyecto ' + i.proyecto : ''}`;
+  }
   if (u.name === 'actualizar_tarea' && i.eliminar) return `Eliminar la tarea «${i.tarea}» del proyecto ${i.proyecto}`;
   if (u.name === 'modificar_evento' && i.eliminar) return `Eliminar el evento «${i.evento}» de la agenda`;
   if (u.name === 'modificar_kpi' && i.eliminar) return `Eliminar el KPI «${i.kpi}» con todo su historial`;
