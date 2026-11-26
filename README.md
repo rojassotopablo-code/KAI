@@ -56,6 +56,11 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v4.3 — Tareas largas, deshacer y confirmaciones
+- **Modo tarea larga:** para encargos grandes («prepárame todo para la auditoría del lunes», «arma la campaña de diciembre») KAI muestra un plan con pasos, los marca a medida que avanza, revisa su trabajo al final y entrega un resumen. Botón **Detener** en cualquier momento.
+- **Deshacer:** todo lo que KAI cambia queda registrado. Bajo cada respuesta con cambios aparece «↩ Deshacer los N cambios de esta respuesta»; también por voz: «KAI, deshaz eso». Historial completo en Ajustes › Actividad de KAI, con deshacer por acción.
+- **Confirmación en acciones importantes:** antes de borrar tareas, eventos, KPIs o memoria, o de reescribir completa una creación, KAI pregunta. Respondes «sí» o «no» por voz o con el botón. Se puede desactivar en Ajustes.
+
 ## Cambios v4.2 — Memoria, modelo automático y control de gasto
 - **Memoria personal:** KAI recuerda lo que le cuentas (tu equipo y sus roles, mandantes, preferencias, decisiones, datos de tu pyme) y lo usa sin que lo repitas. Aprende solo o con «KAI, recuerda que…» / «olvida lo de…». Se ve y se edita en Ajustes › Memoria de KAI, y se sincroniza entre dispositivos. Nunca guarda contraseñas, llaves ni datos de tarjetas.
 - **Modelo automático (nuevo por defecto):** Haiku 5.5 para conversar, consultar y gestionar (rápido y unas 20 veces más barato), y Sonnet 5.5 para crear documentos, presentaciones, Excel y apps, analizar o trabajar con fotos y archivos. Si Haiku decide crear algo, ese paso lo hace Sonnet.

@@ -370,6 +370,12 @@ a{color:var(--cy)}
       <div id="memList"></div>
       <div class="row" style="flex-wrap:nowrap"><input class="f sm" id="memNew" placeholder="Agregar algo que KAI debe recordar"><button class="btn sm" id="memAdd" type="button">Agregar</button></div>
 
+      <h3>Actividad de KAI</h3>
+      <label for="confirmar">Pedir confirmación antes de</label>
+      <select class="f" id="confirmar"><option value="importantes">Borrar o reescribir completo (recomendado)</option><option value="nunca">Nunca (todo se puede deshacer igual)</option></select>
+      <p class="note">Todo lo que KAI cambia queda aquí y se puede deshacer. También: «KAI, deshaz eso».</p>
+      <div id="actList"></div>
+
       <h3>Sincronización entre dispositivos</h3>
       <div class="card" id="syncCard">
         <div class="t"><strong id="syncState">Sin configurar</strong></div>
@@ -409,7 +415,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v4.2 · Fase 5</p>
+      <p class="note" id="ver">KAI v4.3 · Fase 5</p>
     </div>
   </div>
 </div>
@@ -437,10 +443,10 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6
 let db;
 function openDB(){
   return new Promise((res, rej) => {
-    const r = indexedDB.open('jarvis', 6);
+    const r = indexedDB.open('jarvis', 7);
     r.onupgradeneeded = () => {
       const d = r.result;
-      ['proyectos','notas','kv','creaciones','eventos','borrados','kpis','kpireg','contactos','memoria','uso'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
+      ['proyectos','notas','kv','creaciones','eventos','borrados','kpis','kpireg','contactos','memoria','uso','actividad'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -452,8 +458,16 @@ const dbPutRaw = (store, v) => new Promise(r => { const q = tx(store,'readwrite'
 const dbDelRaw = (store, id) => new Promise(r => { const q = tx(store,'readwrite').delete(id); q.onsuccess = q.onerror = () => r(); });
 // Los datos que se sincronizan llevan la hora de su último cambio; los borrados dejan una marca para borrarse también en el otro dispositivo
 const SYNCED = ['proyectos','notas','eventos','creaciones','kpis','kpireg','contactos','memoria','uso'];
-const dbPut = (store, v) => { if (SYNCED.includes(store) && v){ v._mod = Date.now(); scheduleSync(); } return dbPutRaw(store, v); };
-const dbDel = async (store, id) => { if (SYNCED.includes(store)){ await dbPutRaw('borrados', {id:store + ':' + id, store, rid:id, _mod:Date.now()}); scheduleSync(); } return dbDelRaw(store, id); };
+const dbGet = (store, id) => new Promise(r => { const q = tx(store).get(id); q.onsuccess = () => r(q.result || null); q.onerror = () => r(null); });
+// Grabadora: mientras KAI ejecuta una acción, guarda cómo estaba cada dato antes de cambiarlo (para poder deshacer)
+let recorder = null;
+async function recPrev(store, id){
+  if (!recorder || store === 'uso' || !SYNCED.includes(store)) return;
+  const k = store + ':' + id; if (recorder.seen.has(k)) return; recorder.seen.add(k);
+  const prev = await dbGet(store, id); recorder.ops.push({store, id, antes:prev ? JSON.parse(JSON.stringify(prev)) : null});
+}
+const dbPut = async (store, v) => { if (SYNCED.includes(store) && v){ await recPrev(store, v.id); v._mod = Date.now(); scheduleSync(); } return dbPutRaw(store, v); };
+const dbDel = async (store, id) => { if (SYNCED.includes(store)){ await recPrev(store, id); await dbPutRaw('borrados', {id:store + ':' + id, store, rid:id, _mod:Date.now()}); scheduleSync(); } return dbDelRaw(store, id); };
 const kvGet = async (k, d) => { const q = tx('kv').get(k); return new Promise(r => { q.onsuccess = () => r(q.result ? q.result.v : d); q.onerror = () => r(d); }); };
 const kvSet = (k, v) => dbPut('kv', {id:k, v});
 
@@ -464,6 +478,7 @@ async function loadCfg(){ Object.assign(cfg, await kvGet('cfg', {})); if (norm(c
   if (!cfg.v33){ cfg.v33 = true; if (cfg.followUp === 'pregunta') cfg.followUp = 'siempre'; }
   if (!cfg.v42){ cfg.v42 = true; if (cfg.model === 'claude-sonnet-5-5') cfg.model = 'auto'; if (cfg.tope === undefined) cfg.tope = 20; if (cfg.autoMem === undefined) cfg.autoMem = true; } }
 function fillCfg(){
+  if ($('confirmar')) $('confirmar').value = cfg.confirmar || 'importantes';
   if ($('tope')){ $('tope').value = cfg.tope ?? 20; $('autoMem').checked = cfg.autoMem !== false; }
   $('apiKey').value = cfg.apiKey; $('model').value = cfg.model; $('about').value = cfg.about;
   $('wake').value = cfg.wake; $('rate').value = cfg.rate; $('rateV').textContent = (+cfg.rate).toFixed(1);
@@ -639,6 +654,7 @@ function bumpSilence(){
 function submitCapture(){
   const text = (buf + ' ' + pend).replace(/\s+/g, ' ').trim();
   armed = false; buf = ''; pend = ''; clearTimeout(silTimer); clearTimeout(armTimer);
+  if (pendingConfirm && text){ answerConfirm(text); return; }
   if (text.length > 1) handle(text); else disarm();
 }
 function addFinal(t){
@@ -660,7 +676,7 @@ function initRec(){
       if (r.isFinal) fin.push(r[0].transcript); else interim += r[0].transcript;
     }
     if (training) return trainResult(fin, interim);
-    if (busy || speaking) return;
+    if ((busy && !pendingConfirm) || speaking) return;
     if (!armed){
       // ¿apareció la palabra de activación? (se revisa también el texto parcial para reaccionar al instante)
       for (let k = 0; k < fin.length; k++){
@@ -702,7 +718,7 @@ function initRec(){
     if (quickEnds > 4) setTimeout(startRec, 1200); else startRec(); // reinicio inmediato para no perder palabras
   };
 }
-function startRec(){ if (!rec || recRunning || paused || busy) return; try { rec.start(); } catch(_){} }
+function startRec(){ if (!rec || recRunning || paused || (busy && !pendingConfirm)) return; try { rec.start(); } catch(_){} }
 function stopRec(){ if (rec && recRunning){ try { rec.abort(); } catch(_){} } }
 function pauseRec(){ paused = true; stopRec(); }
 function resumeRec(){ paused = false; if (wakeOn) startRec(); }
@@ -985,6 +1001,22 @@ const actions = {
     const ok = await goView(vista, {fecha, proyecto, creacion, kpi});
     return ok ? {ok:true, vista} : {error:'Vista no encontrada'};
   },
+  async plan_de_trabajo({objetivo, pasos = []}){
+    if (!pasos.length) return {error:'Faltan los pasos'};
+    maxSteps = Math.min(60, Math.max(20, pasos.length * 4)); // más vueltas para tareas largas
+    const el = document.createElement('div'); el.className = 'sendcard'; hideTyping(); log.appendChild(el); scrollLog(true);
+    planCard = {el, plan:{objetivo, pasos:pasos.slice(0, 15).map(t => ({texto:String(t), estado:'pendiente'}))}};
+    renderPlan(); showTyping();
+    return {ok:true, pasos:planCard.plan.pasos.length, nota:'Ejecuta los pasos en orden y marca cada uno con avance_plan (en_curso al empezar, hecho al terminar). El último paso siempre es revisar tu trabajo.'};
+  },
+  async avance_plan({paso, estado = 'hecho', nota = ''}){
+    if (!planCard) return {error:'No hay plan activo'};
+    const x = planCard.plan.pasos[+paso - 1]; if (!x) return {error:'Ese paso no existe (se numeran desde 1)'};
+    x.estado = ['pendiente','en_curso','hecho','omitido','error'].includes(estado) ? estado : 'hecho'; if (nota) x.nota = nota;
+    renderPlan(); scrollLog();
+    return {ok:true, detener:stopTask || undefined};
+  },
+  async deshacer_ultimo(){ const r = await undoLast(); return r.n ? {ok:true, deshecho:r.resumen} : {error:'No hay acciones recientes para deshacer'}; },
   async recordar({texto, tipo = 'otro'}){
     if (!texto || texto.length < 3) return {error:'Nada que recordar'};
     if (/\b(contrase(ñ|n)a|password|clave|token|api key|sk-ant|ghp_|github_pat|tarjeta|cvv)\b/i.test(texto)) return {error:'Por seguridad no guardo contraseñas, llaves ni datos de tarjetas.'};
@@ -1067,6 +1099,9 @@ const tools = [
   {name:'registrar_kpi', description:'Registra un valor de un KPI (si no existe el KPI, créalo antes con crear_kpi). Un registro por fecha: si ya hay uno ese día, se reemplaza.', input_schema:S({kpi:{type:'string'}, valor:{type:'number'}, fecha:{type:'string', description:'AAAA-MM-DD; para valores mensuales usa el último día del mes que corresponde'}, nota:{type:'string'}}, ['kpi','valor'])},
   {name:'consultar_kpis', description:'Estado de los KPIs: último valor, meta, promedio, tendencia, % de periodos en meta, si falta registrar e historial. Úsalo antes de analizar o hacer informes.', input_schema:S({kpi:{type:'string', description:'Omitir para todos'}, desde:{type:'string'}, hasta:{type:'string'}})},
   {name:'modificar_kpi', description:'Cambia la definición de un KPI (meta, unidad, sentido, frecuencia, nombre, categoría), borra el registro de una fecha o elimina el KPI completo.', input_schema:S({kpi:{type:'string'}, nombre:{type:'string'}, unidad:{type:'string'}, meta:{type:'number'}, sentido:{type:'string', enum:['mayor','menor']}, frecuencia:{type:'string', enum:Object.keys(FREQ)}, categoria:{type:'string'}, borrar_registro_fecha:{type:'string'}, eliminar:{type:'boolean'}}, ['kpi'])},
+  {name:'plan_de_trabajo', description:'Para encargos grandes con varias partes o entregables (por ejemplo «prepárame todo para la auditoría», «arma la campaña del mes», «organiza la semana del equipo»): muestra al usuario un plan de 3 a 12 pasos antes de empezar. El último paso debe ser revisar y corregir el trabajo.', input_schema:S({objetivo:{type:'string'}, pasos:{type:'array', items:{type:'string'}}}, ['objetivo','pasos'])},
+  {name:'avance_plan', description:'Marca el avance de un paso del plan activo (numerado desde 1).', input_schema:S({paso:{type:'number'}, estado:{type:'string', enum:['en_curso','hecho','omitido','error']}, nota:{type:'string'}}, ['paso','estado'])},
+  {name:'deshacer_ultimo', description:'Deshace todos los cambios que hiciste en tu última respuesta con cambios (cuando el usuario diga «deshaz eso», «vuelve atrás», «no, revierte»).', input_schema:S({})},
   {name:'recordar', description:'Guarda un dato durable sobre el usuario en la memoria de KAI (persona de su equipo y su rol, preferencia de cómo hacer las cosas, dato de su trabajo, proyecto o pyme). Redáctalo como una frase clara en tercera persona, por ejemplo «Juan Pérez es supervisor del turno 7x7 A».', input_schema:S({texto:{type:'string'}, tipo:{type:'string', enum:['persona','preferencia','trabajo','proyecto','pyme','otro']}}, ['texto'])},
   {name:'olvidar', description:'Borra de la memoria los datos que coincidan con el texto indicado.', input_schema:S({buscar:{type:'string'}}, ['buscar'])},
   {name:'consultar_gasto', description:'Gasto estimado en Claude del mes (o de un mes AAAA-MM), por modelo, y el tope mensual.', input_schema:S({mes:{type:'string'}})},
@@ -1081,7 +1116,7 @@ const tools = [
 /* ---------- Vistas ---------- */
 let filtro = 'activo', curProj = null, openTask = null;
 const fechaCls = f => !f ? '' : f < hoy() ? 'late' : f === hoy() ? 'today' : '';
-function refreshUI(){ if ($('drawer').classList.contains('open')){ renderMem(); renderUso(); renderProyectos(); renderAgenda(); renderKpis(); renderCrea(); renderNotas(); renderCont(); } }
+function refreshUI(){ if ($('drawer').classList.contains('open')){ renderMem(); renderUso(); renderAct(); renderProyectos(); renderAgenda(); renderKpis(); renderCrea(); renderNotas(); renderCont(); } }
 
 async function renderProyectos(){
   if (curProj) return renderDetalle();
@@ -1732,6 +1767,7 @@ async function renderMem(){
   $('memList').innerHTML = m.length ? m.map(x => `<div class="ev"><div class="hr" style="width:auto;min-width:70px;font-size:12px">${esc(x.tipo || 'otro')}</div><div class="b small" style="color:var(--ink)">${esc(x.texto)}</div><button class="x" data-delm="${esc(x.id)}" aria-label="Olvidar">✕</button></div>`).join('') : '<p class="small">KAI todavía no recuerda nada. Cuéntale de ti o dile «recuerda que…».</p>';
 }
 $('memList').addEventListener('click', async e => { const b = e.target.closest('[data-delm]'); if (b){ await dbDel('memoria', b.dataset.delm); renderMem(); } });
+$('confirmar').addEventListener('change', async () => { cfg.confirmar = $('confirmar').value; await kvSet('cfg', cfg); });
 $('tope').addEventListener('change', async () => { cfg.tope = Math.max(0, +$('tope').value || 0); await kvSet('cfg', cfg); renderUso(); });
 $('autoMem').addEventListener('change', async () => { cfg.autoMem = $('autoMem').checked; await kvSet('cfg', cfg); });
 $('memAdd').addEventListener('click', async () => { const t = $('memNew').value.trim(); if (!t) return; await actions.recordar({texto:t, tipo:'otro'}); $('memNew').value = ''; });
@@ -1814,6 +1850,8 @@ Cómo responder:
 - Si el usuario adjunta fotos o archivos, analízalos con atención: describe lo relevante (en terreno: estado de equipos, daños, riesgos, condiciones inseguras), extrae datos, resume o úsalos para crear lo que pida (por ejemplo, convertir un PDF en procedimiento o una foto en informe de hallazgo).
 - KPIs: cuando el usuario diga un valor de un indicador («cumplimiento del programa esta semana 92», «este mes tuvimos 1 incidente»), regístralo con registrar_kpi (créalo antes si no existe, con unidad, meta y sentido razonables) y dile si cumple la meta y cómo va frente al valor anterior. Para análisis o informes usa consultar_kpis primero; para informes crea una presentacion o un excel con los datos reales, sin inventar cifras.
 - Envíos y redes sociales: para mandar algo por WhatsApp o correo, o publicar en LinkedIn, Facebook, Instagram o X, redacta el texto final adaptado al canal y usa preparar_envio (con adjuntar_creacion si corresponde enviar un informe, presentación o Excel). Tú no envías: el usuario toca el botón y confirma en la app; dile «te dejé el envío listo, toca el botón». Si falta el correo o número de un contacto, pídelo y guárdalo con guardar_contacto. Para publicar más tarde usa programar_publicacion.
+- Tareas largas: si el pedido tiene varias partes o entregables, primero llama plan_de_trabajo, luego ejecuta los pasos en orden marcando cada uno con avance_plan, y en el último paso revisa lo que hiciste (relee las creaciones con leer_creacion, verifica cifras, fechas y coherencia) y corrige antes de entregar. Al final resume en 2 o 3 frases qué quedó hecho y dónde verlo. Si avance_plan responde detener, para de inmediato.
+- Todo lo que cambias queda registrado y el usuario puede deshacerlo; algunas acciones importantes (borrar, reescribir completo) le piden confirmación: si no autoriza, no insistas.
 - Usa las herramientas sin pedir permiso. Si no encuentras algo, lista antes de rendirte. Para "qué tengo hoy" usa resumen_pendientes.
 - Si necesitas información actual (noticias, precios, normativa vigente, datos recientes) y tienes búsqueda web, úsala.
 - Memoria: tienes una memoria persistente del usuario (abajo). Úsala con naturalidad, sin recitarla. ${cfg.autoMem !== false ? 'Cuando el usuario cuente algo durable y útil para el futuro (personas de su equipo y sus roles, mandantes, cómo le gusta que hagas las cosas, decisiones, datos de sus proyectos o de su pyme), guárdalo con recordar sin preguntar y sin anunciarlo largamente. No guardes lo pasajero ni lo que ya está en la memoria.' : 'Solo guarda algo en memoria cuando el usuario lo pida explícitamente («recuerda que…»).'} Nunca guardes contraseñas, llaves, números de tarjetas o cuentas, ni datos de salud. Si el usuario corrige algo que recordabas, usa olvidar y recordar con el dato correcto.`;
@@ -1877,13 +1915,93 @@ function friendly(e){
   if (!e.status) return 'No pude conectar con Claude. Revisa tu conexión a internet.';
   return `Error ${e.status} de Claude: ${m || 'sin detalle'}`;
 }
+/* ================= Actividad, deshacer, confirmaciones y tareas largas ================= */
+let turnId = null, pendingConfirm = null, stopTask = false, planCard = null, maxSteps = 12;
+const TOOL_TXT = {crear_proyecto:'Creó el proyecto', actualizar_proyecto:'Actualizó el proyecto', agregar_tareas:'Agregó tareas a', actualizar_tarea:'Cambió una tarea de', crear_evento:'Agendó', modificar_evento:'Cambió el evento', crear_creacion:'Creó', modificar_creacion:'Reescribió', editar_creacion:'Editó', crear_nota:'Anotó', crear_kpi:'Creó el KPI', registrar_kpi:'Registró valor en', modificar_kpi:'Cambió el KPI', guardar_contacto:'Guardó el contacto', recordar:'Recordó', olvidar:'Olvidó', programar_publicacion:'Programó publicación'};
+const toolLabel = u => u.input.titulo || u.input.nombre || u.input.proyecto || u.input.creacion || u.input.evento || u.input.kpi || u.input.texto || u.input.buscar || '';
+async function logActivity(u, ops){
+  const e = {id:uid(), turno:turnId, fecha:new Date().toISOString(), herramienta:u.name, resumen:`${u.input && u.input.eliminar ? 'Eliminó' : (TOOL_TXT[u.name] || u.name.replace(/_/g, ' '))} ${String(toolLabel(u)).slice(0, 80)}`.trim(), ops, deshecho:false};
+  await dbPutRaw('actividad', e);
+  const all = (await dbAll('actividad')).sort((a,b) => b.fecha.localeCompare(a.fecha));
+  for (const x of all.slice(300)) await dbDelRaw('actividad', x.id); // se guardan las últimas 300 acciones
+}
+async function undoEntries(entries){
+  let n = 0;
+  for (const e of entries.sort((a,b) => b.fecha.localeCompare(a.fecha))){
+    if (e.deshecho) continue;
+    for (const op of [...e.ops].reverse()){ if (op.antes) await dbPut(op.store, op.antes); else await dbDel(op.store, op.id); n++; }
+    e.deshecho = true; await dbPutRaw('actividad', e);
+  }
+  refreshUI(); if (vCur) openViewer(vCur); renderAct();
+  return n;
+}
+async function undoTurn(t){ return undoEntries((await dbAll('actividad')).filter(e => e.turno === t && !e.deshecho)); }
+async function undoLast(){
+  const all = (await dbAll('actividad')).filter(e => !e.deshecho).sort((a,b) => b.fecha.localeCompare(a.fecha));
+  return all.length ? {n:await undoTurn(all[0].turno), resumen:all.filter(e => e.turno === all[0].turno).map(e => e.resumen)} : {n:0, resumen:[]};
+}
+async function renderAct(){
+  if (!$('actList')) return;
+  const all = (await dbAll('actividad')).sort((a,b) => b.fecha.localeCompare(a.fecha)).slice(0, 40);
+  $('actList').innerHTML = all.length ? all.map(e => `<div class="ev"><div class="hr" style="width:auto;min-width:64px;font-size:12px">${esc(new Date(e.fecha).toLocaleString('es-CL', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}))}</div><div class="b small" style="color:${e.deshecho ? 'var(--mute)' : 'var(--ink)'};${e.deshecho ? 'text-decoration:line-through' : ''}">${esc(e.resumen)}</div>${e.deshecho || !e.ops.length ? '' : `<button class="btn sm" data-undo="${esc(e.id)}">Deshacer</button>`}</div>`).join('') : '<p class="small">Sin actividad registrada.</p>';
+}
+$('actList').addEventListener('click', async e => { const b = e.target.closest('[data-undo]'); if (!b) return; const x = await dbGet('actividad', b.dataset.undo); if (x) await undoEntries([x]); });
+
+// Acciones que requieren tu OK antes de ejecutarse
+function confirmText(u){
+  const i = u.input || {};
+  if (u.name === 'actualizar_tarea' && i.eliminar) return `Eliminar la tarea «${i.tarea}» del proyecto ${i.proyecto}`;
+  if (u.name === 'modificar_evento' && i.eliminar) return `Eliminar el evento «${i.evento}» de la agenda`;
+  if (u.name === 'modificar_kpi' && i.eliminar) return `Eliminar el KPI «${i.kpi}» con todo su historial`;
+  if (u.name === 'modificar_kpi' && i.borrar_registro_fecha) return `Borrar el registro del ${i.borrar_registro_fecha} del KPI «${i.kpi}»`;
+  if (u.name === 'olvidar') return `Borrar de mi memoria lo relacionado con «${i.buscar}»`;
+  if (u.name === 'agregar_tareas' && (i.tareas || []).length > 15) return `Agregar ${i.tareas.length} tareas al proyecto ${i.proyecto}`;
+  if (u.name === 'modificar_creacion' && i.contenido_nuevo) return `Reescribir completa la creación «${i.creacion}» (podrás deshacerlo)`;
+  return '';
+}
+const YES = /^(si|sí|dale|ok|okey|confirmo|confirmar|hazlo|adelante|de acuerdo|ya|correcto|afirmativo)\b/, NO = /^(no|cancela|cancelar|para|detente|mejor no|negativo)\b/;
+function answerConfirm(text){
+  const n = norm(text); if (!pendingConfirm) return;
+  if (YES.test(n)) pendingConfirm.resolve(true); else if (NO.test(n)) pendingConfirm.resolve(false);
+  else { addMsg('s', 'Dime «sí» o «no».'); arm(20000, true); startRec(); }
+}
+function askConfirm(desc){
+  return new Promise(res => {
+    const d = document.createElement('div'); d.className = 'sendcard';
+    d.innerHTML = `<div class="sh">⚠️ ¿Confirmas? <i>Acción importante</i></div><div style="margin:4px 0 8px">${esc(desc)}</div><div class="row"><button class="btn p sm" data-c="1">Sí, hazlo</button><button class="btn sm" data-c="0">No</button></div>`;
+    hideTyping(); log.appendChild(d); scrollLog(true);
+    if (vCur) vStatus('⚠️ ' + desc + ' — ¿confirmas? (sí / no)');
+    const timer = setTimeout(() => finish(false), 90000);
+    const finish = ok => { if (!pendingConfirm) return; clearTimeout(timer); pendingConfirm = null; d.querySelector('.row').innerHTML = `<span class="small">${ok ? '✓ Confirmado' : '✕ Cancelado'}</span>`; showTyping(); res(ok); };
+    pendingConfirm = {resolve:finish};
+    d.addEventListener('click', e => { const b = e.target.closest('[data-c]'); if (b) finish(b.dataset.c === '1'); });
+    speak('¿Confirmas? ' + desc).then(() => { if (pendingConfirm && SR){ paused = false; arm(20000, true); startRec(); } });
+  });
+}
+
+// Tarjeta de tarea larga con pasos y botón Detener
+function renderPlan(){
+  if (!planCard) return;
+  const ic = {pendiente:'○', en_curso:'◐', hecho:'✓', omitido:'–', error:'✕'};
+  const p = planCard.plan, done = p.pasos.filter(x => x.estado === 'hecho').length;
+  planCard.el.innerHTML = `<div class="sh">🧭 ${esc(p.objetivo)} <i>${planCard.fin ? (planCard.detenida ? 'Detenida' : 'Completada') : `${done}/${p.pasos.length}`}</i></div>
+    <div class="meter"><span style="width:${p.pasos.length ? done / p.pasos.length * 100 : 0}%"></span></div>
+    ${p.pasos.map(x => `<div class="small" style="padding:3px 0;color:${x.estado === 'hecho' ? 'var(--ok)' : x.estado === 'en_curso' ? 'var(--cy)' : x.estado === 'error' ? 'var(--bad)' : 'var(--mute)'}">${ic[x.estado] || '○'} ${esc(x.texto)}${x.nota ? ` <span style="color:var(--mute)">— ${esc(x.nota)}</span>` : ''}</div>`).join('')}
+    ${planCard.fin ? '' : '<div class="row"><button class="btn sm danger" data-stop="1">Detener</button></div>'}`;
+  if (vCur) vStatus(`🧭 ${done}/${p.pasos.length}: ${(p.pasos.find(x => x.estado === 'en_curso') || {}).texto || p.objetivo}`);
+}
+log.addEventListener('click', e => { if (e.target.closest('[data-stop]')){ stopTask = true; e.target.closest('[data-stop]').textContent = 'Deteniendo…'; } });
+
 async function askClaude(text, retried){ // text: texto o lista de bloques (con adjuntos)
   await checkTope();
   let model = pickModel(text);
+  if (!retried){ turnId = uid(); stopTask = false; planCard = null; maxSteps = 12; }
   const start = history.length;
   history.push({role:'user', content:text});
   try {
-    for (let step = 0; step < 10; step++){
+    for (let step = 0; step < maxSteps; step++){
+      if (stopTask){ history.push({role:'user', content:'(El usuario detuvo la tarea.)'}); history.push({role:'assistant', content:[{type:'text', text:'Tarea detenida.'}]}); if (planCard){ planCard.fin = true; planCard.detenida = true; renderPlan(); } return 'Detuve la tarea. Lo que alcancé a hacer quedó guardado y lo puedes deshacer con el botón de abajo.'; }
+      if (step > 0) await checkTope();
       trimHistory();
       let data = await callClaude(model);
       // si Haiku decide crear o reescribir un entregable, ese paso lo hace Sonnet para mejor calidad
@@ -1897,21 +2015,30 @@ async function askClaude(text, retried){ // text: texto o lista de bloques (con 
         const reply = safe.filter(c => c.type === 'text').map(c => c.text).join('\n\n').trim();
         if (!safe.length) history.pop();
         compactHistory(); compactAtts();
+        if (planCard && !planCard.fin){ planCard.fin = true; planCard.plan.pasos.forEach(x => { if (x.estado === 'en_curso') x.estado = 'hecho'; }); renderPlan(); }
         if (data.stop_reason === 'max_tokens') return (reply ? reply + '\n\n' : '') + '(La respuesta se cortó por largo. Pídeme que continúe.)';
         return reply || 'Listo.';
       }
       const results = [];
       for (const u of uses){
         let out;
+        const cdesc = cfg.confirmar !== 'nunca' ? confirmText(u) : '';
+        if (cdesc && !(await askConfirm(cdesc))){
+          results.push({type:'tool_result', tool_use_id:u.id, content:JSON.stringify({error:'El usuario NO autorizó esta acción. No la intentes de nuevo salvo que lo pida.'})}); continue;
+        }
+        recorder = {ops:[], seen:new Set()};
         try { out = await (actions[u.name] ? actions[u.name](u.input) : {error:'Herramienta desconocida'}); }
         catch(err){ out = {error:String(err)}; }
-        const lbl = u.input.titulo || u.input.nombre || u.input.proyecto || u.input.creacion || u.input.evento || '';
-        addMsg('s', '⚙ ' + u.name.replace(/_/g,' ') + (lbl ? ' · ' + lbl : '')); showTyping();
+        const ops = recorder.ops; recorder = null;
+        if (ops.length) await logActivity(u, ops);
+        const lbl = toolLabel(u);
+        if (!['plan_de_trabajo','avance_plan'].includes(u.name)){ addMsg('s', '⚙ ' + u.name.replace(/_/g,' ') + (lbl ? ' · ' + String(lbl).slice(0, 60) : '')); showTyping(); }
         results.push({type:'tool_result', tool_use_id:u.id, content:JSON.stringify(out ?? {ok:true})});
       }
       history.push({role:'user', content:results});
     }
     history.push({role:'assistant', content:[{type:'text', text:'Hice varias acciones.'}]});
+    if (planCard){ planCard.fin = true; renderPlan(); }
     compactHistory();
     return 'Hice varias acciones; revisa en pantalla.';
   } catch(e){
@@ -2075,6 +2202,11 @@ async function handle(text){
   if (/^(silencio|para|detente|calla|callate|stop)$/.test(n)){ stopSpeaking(); return; }
   endConv = /^(gracias|muchas gracias|eso es todo|eso seria todo|nada mas|listo gracias|chao|adios|hasta luego|terminamos|ya esta|ok gracias)( kai)?$/.test(n);
   if (endConv){ addMsg('u', text); const bye = 'De nada. Aquí estaré.'; addMsg('a', bye); disarm(); await speak(bye); return; }
+  if (!atts.length && /^(deshaz|deshacer|deshaz eso|deshace|revierte|revertir|vuelve atras|deshaz lo ultimo|deshaz el ultimo cambio)( eso| lo ultimo| el cambio| porfa| por favor)?$/.test(n)){
+    addMsg('u', text); const r = await undoLast();
+    const t = r.n ? `Listo, deshice: ${r.resumen.join('; ')}.` : 'No hay cambios recientes para deshacer.';
+    addMsg('a', t); await speak(t); return;
+  }
   if (!atts.length && await quickNav(text)) return;
   if (!wakeOn) stopRec();
   busy = true; const um = addMsg('u', text);
@@ -2093,7 +2225,10 @@ async function handle(text){
   }
   clearInterval(tick); busy = false;
   hideTyping();
-  if (reply){ addMsg('a', reply, {animate:true}); hint.textContent = ''; if (vCur) $('vMsg').textContent = reply.split('\n')[0].slice(0, 220); followUp = !endConv && (cfg.followUp === 'siempre' || (cfg.followUp !== 'nunca' && /\?\s*$/.test(reply.trim()))); await speak(reply); }
+  const myTurn = turnId, nAct = myTurn ? (await dbAll('actividad')).filter(e => e.turno === myTurn && !e.deshecho).length : 0;
+  if (reply){ addMsg('a', reply, {animate:true});
+    if (nAct){ const u = document.createElement('button'); u.className = 'chipbtn'; u.style.alignSelf = 'flex-start'; u.textContent = `↩ Deshacer ${nAct === 1 ? 'el cambio' : 'los ' + nAct + ' cambios'} de esta respuesta`;
+      u.onclick = async () => { const k = await undoTurn(myTurn); u.textContent = k ? '✓ Deshecho' : 'Ya estaba deshecho'; u.disabled = true; }; log.appendChild(u); scrollLog(); } hint.textContent = ''; if (vCur) $('vMsg').textContent = reply.split('\n')[0].slice(0, 220); followUp = !endConv && (cfg.followUp === 'siempre' || (cfg.followUp !== 'nunca' && /\?\s*$/.test(reply.trim()))); await speak(reply); }
   if (wakeOn) startRec();
   if (!speaking && !armed) setState(wakeOn ? 'listening' : 'idle', wakeOn ? `Di «${cfg.wake}» cuando me necesites` : 'Toca el orbe para hablar');
   kvSet('chatlog', [...log.querySelectorAll('.msg.u,.msg.a')].slice(-40).map(d => ({r:d.classList.contains('u') ? 'u' : 'a', t:d.dataset.raw || (d.querySelector('.thumbs') ? '📎 ' : '') + [...d.childNodes].filter(x => x.nodeType === 3).map(x => x.textContent).join('')})));
