@@ -358,7 +358,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v3.6 · Fase 3</p>
+      <p class="note" id="ver">KAI v3.7 · Fase 3</p>
     </div>
   </div>
 </div>
@@ -725,7 +725,7 @@ const addDays = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.ge
 const fmtD = iso => iso ? new Date(iso + 'T12:00').toLocaleDateString('es-CL', {day:'numeric', month:'short'}) : '';
 const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '';
 const PRI = ['alta','media','baja'], EST = ['activo','pausado','terminado'];
-const TIPOS = {documento:'Documento', presentacion:'Presentación', app:'App', tabla:'Tabla', codigo:'Código'};
+const TIPOS = {documento:'Documento', presentacion:'Presentación', excel:'Excel', app:'App', tabla:'Tabla', codigo:'Código'};
 
 function normTask(t){
   return {id:t.id || uid(), texto:t.texto || '', hecha:!!t.hecha, fecha:validDate(t.fecha), responsable:t.responsable || '',
@@ -877,6 +877,15 @@ const actions = {
     await dbPut('eventos', e); refreshUI();
     return {ok:true, evento:evOut(e)};
   },
+  async descargar_creacion({creacion, formato}){
+    const c = await findCrea(creacion || vCur || ''); if (!c) return {error:'No encontré la creación'};
+    try {
+      if (formato === 'pptx' || formato === 'xlsx') await downloadOffice(c, formato);
+      else if (formato === 'pdf') printHTML(printable(c));
+      else { const x = exportOf(c); download(x.name, x.type, x.data); }
+      return {ok:true, archivo:c.titulo + '.' + (formato === 'word' ? 'doc' : formato)};
+    } catch(e){ return {error:String(e.message || e)}; }
+  },
   async navegar({vista, fecha, proyecto, creacion}){
     const ok = await goView(vista, {fecha, proyecto, creacion});
     return ok ? {ok:true, vista} : {error:'Vista no encontrada'};
@@ -897,7 +906,7 @@ const tools = [
   {name:'agregar_tareas', description:'Agrega una o varias tareas a un proyecto existente.', input_schema:S({proyecto:{type:'string'}, tareas:{type:'array', items:tareaSchema}}, ['proyecto','tareas'])},
   {name:'actualizar_tarea', description:'Completa, reabre, edita, reprograma, reasigna o elimina una tarea.', input_schema:S({proyecto:{type:'string'}, tarea:{type:'string', description:'Texto aproximado de la tarea'}, completar:{type:'boolean'}, texto_nuevo:{type:'string'}, fecha:{type:'string'}, responsable:{type:'string'}, prioridad:{type:'string', enum:PRI}, eliminar:{type:'boolean'}}, ['proyecto','tarea'])},
   {name:'resumen_pendientes', description:'Eventos del calendario y tareas vencidas, para hoy y de los próximos días de todos los proyectos activos.', input_schema:S({dias:{type:'number'}})},
-  {name:'crear_creacion', description:'Crea un entregable y lo abre en pantalla. tipo: documento (Markdown: informes, procedimientos, cartas, correos largos, planes, actas, resúmenes), presentacion (Markdown, cada diapositiva separada por una línea con ---), app (un archivo HTML completo y autocontenido con CSS y JS: calculadoras, formularios, juegos, checklists, dashboards), tabla (CSV con encabezados, separador coma), codigo (cualquier lenguaje).', input_schema:S({titulo:{type:'string'}, tipo:{type:'string', enum:Object.keys(TIPOS)}, contenido:{type:'string'}, lenguaje:{type:'string', description:'Solo para tipo codigo'}}, ['titulo','tipo','contenido'])},
+  {name:'crear_creacion', description:'Crea un entregable y lo abre en pantalla. tipo: documento (Markdown: informes, procedimientos, cartas, correos largos, planes, actas, resúmenes; se descarga en Word), presentacion (Markdown, cada diapositiva separada por una línea con ---; la primera con «# Título» y una línea de subtítulo es la portada; cada diapositiva con «## Título» y viñetas cortas, opcionalmente una tabla Markdown, y al final «Notas: …» para las notas del orador; se descarga como PowerPoint .pptx), excel (libro Excel real con fórmulas; contenido = JSON {"hojas":[{"nombre":"Resumen","columnas":[{"titulo":"Ítem","formato":"texto","ancho":30},{"titulo":"Monto","formato":"moneda"}],"filas":[["Polines",150000],["Correa","=B2*2"]],"total":true}]}; formatos: texto, numero, entero, decimal, moneda, porcentaje (0.15 = 15%), fecha (AAAA-MM-DD); los encabezados están en la fila 1 y los datos desde la fila 2, así que las fórmulas usan esas referencias A1 con funciones de Excel en inglés (SUM, AVERAGE, IF, ROUND…); "total":true en la hoja agrega al final una fila TOTAL que suma las columnas marcadas con "total":true (si no marcas ninguna, suma la última columna numérica); esa fila queda en la fila (cantidad de filas de datos + 2), útil para referenciarla desde otra hoja como Hoja!D5), app (un archivo HTML completo y autocontenido con CSS y JS: calculadoras, formularios, juegos, checklists, dashboards), tabla (CSV con encabezados, separador coma), codigo (cualquier lenguaje).', input_schema:S({titulo:{type:'string'}, tipo:{type:'string', enum:Object.keys(TIPOS)}, contenido:{type:'string'}, lenguaje:{type:'string', description:'Solo para tipo codigo'}}, ['titulo','tipo','contenido'])},
   {name:'leer_creacion', description:'Lee el contenido completo de una creación antes de modificarla. Si no se indica cuál, devuelve la más reciente.', input_schema:S({creacion:{type:'string', description:'Título aproximado'}})},
   {name:'modificar_creacion', description:'Reemplaza el contenido de una creación con la versión nueva COMPLETA (no solo el cambio). Guarda la versión anterior para deshacer y la muestra en pantalla.', input_schema:S({creacion:{type:'string'}, contenido_nuevo:{type:'string'}, titulo_nuevo:{type:'string'}, cambio:{type:'string', description:'Resumen breve del cambio'}}, ['creacion'])},
   {name:'editar_creacion', description:'Cambio rápido y localizado en una creación: reemplaza fragmentos exactos de texto. Úsalo para cambios puntuales (agregar una sección al final, corregir una frase, cambiar un dato). Para agregar, usa como buscar el texto justo antes de donde va lo nuevo y reemplázalo por ese mismo texto más lo nuevo.', input_schema:S({creacion:{type:'string'}, cambios:{type:'array', items:S({buscar:{type:'string', description:'Texto exacto que existe hoy en la creación'}, reemplazar:{type:'string'}}, ['buscar','reemplazar'])}, cambio:{type:'string'}}, ['creacion','cambios'])},
@@ -906,6 +915,7 @@ const tools = [
   {name:'crear_evento', description:'Agenda un evento en el calendario (reunión, cita, turno, visita, recordatorio con hora).', input_schema:S({titulo:{type:'string'}, fecha:{type:'string', description:'AAAA-MM-DD'}, hora_inicio:{type:'string', description:'HH:MM 24 h'}, hora_fin:{type:'string'}, lugar:{type:'string'}, notas:{type:'string'}, recordatorio_min:{type:'number', description:'Minutos antes para avisar, por defecto 15'}}, ['titulo','fecha'])},
   {name:'listar_eventos', description:'Eventos del calendario entre dos fechas (por defecto los próximos 7 días).', input_schema:S({desde:{type:'string'}, hasta:{type:'string'}})},
   {name:'modificar_evento', description:'Cambia o elimina un evento del calendario.', input_schema:S({evento:{type:'string', description:'Título aproximado'}, fecha_actual:{type:'string'}, titulo:{type:'string'}, fecha:{type:'string'}, hora_inicio:{type:'string'}, hora_fin:{type:'string'}, lugar:{type:'string'}, notas:{type:'string'}, recordatorio_min:{type:'number'}, eliminar:{type:'boolean'}}, ['evento'])},
+  {name:'descargar_creacion', description:'Descarga una creación al dispositivo en el formato pedido: pptx (presentaciones), xlsx (excel o tabla), word (documento), html o pdf (abre la impresión para guardar en PDF).', input_schema:S({creacion:{type:'string'}, formato:{type:'string', enum:['pptx','xlsx','word','html','pdf']}}, ['formato'])},
   {name:'navegar', description:'Cambia lo que se ve en pantalla: inicio (cierra todo y vuelve a la conversación), agenda (calendario propio de la app; con fecha abre ese día), proyectos (con proyecto abre su ficha), creaciones, creacion (abre la indicada), notas, ajustes.', input_schema:S({vista:{type:'string', enum:['inicio','agenda','proyectos','creaciones','creacion','notas','ajustes']}, fecha:{type:'string'}, proyecto:{type:'string'}, creacion:{type:'string'}}, ['vista'])},
   {name:'crear_nota', description:'Guarda una nota o recordatorio suelto, no asociado a un proyecto.', input_schema:S({texto:{type:'string'}, etiqueta:{type:'string'}}, ['texto'])},
   {name:'listar_notas', description:'Lee las notas más recientes.', input_schema:S({limite:{type:'number'}})}
@@ -1062,19 +1072,198 @@ function exportOf(c){
 function printable(c){
   if (c.tipo === 'presentacion') return slidesHTML(c);
   if (c.tipo === 'tabla') return docShell(c.titulo, `<h1>${esc(c.titulo)}</h1>${csvTable(c.contenido)}`);
+  if (c.tipo === 'excel'){ const d = parseExcel(c); return docShell(c.titulo, `<h1>${esc(c.titulo)}</h1>` + (d ? d.hojas.map((_, i) => { vSheet = i; return `<h2>${esc(d.hojas[i].nombre || '')}</h2>` + excelHTML({hojas:[d.hojas[i]]}); }).join('') : '')); }
   if (c.tipo === 'app') return c.contenido;
   if (c.tipo === 'codigo') return docShell(c.titulo, `<pre>${esc(c.contenido)}</pre>`);
   return docShell(c.titulo, renderMD(c.contenido));
 }
+/* ---------- Office real: Excel (.xlsx) y PowerPoint (.pptx) ---------- */
+const XL_FMT = {numero:'#,##0.##', entero:'#,##0', moneda:'"$"#,##0', decimal:'#,##0.00', porcentaje:'0.0%', fecha:'dd-mm-yyyy', texto:'@'};
+function parseExcel(c){
+  try { const d = JSON.parse(c.contenido); if (d && Array.isArray(d.hojas)) return d; } catch(_){}
+  return null;
+}
+const colL = n => { let s = ''; n++; while (n){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+const isNum = v => typeof v === 'number' || (typeof v === 'string' && /^-?\d+([.,]\d+)?$/.test(v.trim()));
+// Una «tabla» CSV se convierte en hoja con formatos detectados
+function csvToExcel(c){
+  const rows = parseCSV(c.contenido); if (!rows.length) return {hojas:[]};
+  const body = rows.slice(1).map(r => r.map(v => isNum(v) ? +String(v).replace(',', '.') : v));
+  const cols = rows[0].map((t, i) => ({titulo:t, formato:body.length && body.every(r => r[i] === '' || r[i] === undefined || typeof r[i] === 'number') ? 'numero' : 'texto'}));
+  return {hojas:[{nombre:(c.titulo || 'Hoja1').slice(0, 31), columnas:cols, filas:body}]};
+}
+// Hoja con totales: agrega fila TOTAL con SUMA en columnas numéricas
+function sheetRows(hj){
+  const cols = hj.columnas || [], filas = (hj.filas || []).map(r => [...r]);
+  if (hj.total && filas.length){
+    const n = filas.length;
+    // suma solo las columnas marcadas con "total":true; si ninguna está marcada, la última columna numérica
+    let sum = cols.map(cc => cc.total === true);
+    if (!sum.some(Boolean)){ const li = cols.map(cc => ['numero','entero','moneda','decimal'].includes(cc.formato)).lastIndexOf(true); if (li >= 0) sum[li] = true; }
+    filas.push(cols.map((cc, i) => i === 0 ? 'TOTAL' : sum[i] ? `=SUM(${colL(i)}2:${colL(i)}${n + 1})` : ''));
+  }
+  return {cols, filas};
+}
+// Calcula fórmulas sencillas solo para mostrarlas en pantalla (Excel recalcula todo al abrir)
+function evalFormulas(header, filas){
+  const val = (ref, depth) => {
+    const m = ref.match(/^([A-Z]+)(\d+)$/); if (!m) return 0;
+    let ci = 0; for (const ch of m[1]) ci = ci * 26 + ch.charCodeAt(0) - 64; ci--;
+    const ri = +m[2] - 2; const v = ri < 0 ? header[ci] : (filas[ri] || [])[ci];
+    if (typeof v === 'string' && v.startsWith('=')) return depth > 20 ? 0 : calc(v, depth + 1);
+    return isNum(v) ? +String(v).replace(',', '.') : 0;
+  };
+  const range = (a, b, d) => {
+    const pa = a.match(/^([A-Z]+)(\d+)$/), pb = b.match(/^([A-Z]+)(\d+)$/); const out = [];
+    const c2n = s => [...s].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+    for (let cc = c2n(pa[1]); cc <= c2n(pb[1]); cc++) for (let rr = +pa[2]; rr <= +pb[2]; rr++) out.push(val(colL(cc - 1) + rr, d));
+    return out;
+  };
+  const calc = (f, d = 0) => {
+    let e = f.slice(1).toUpperCase().replace(/;/g, ',');
+    const FN = {SUM:a => a.reduce((x, y) => x + y, 0), SUMA:a => a.reduce((x, y) => x + y, 0), AVERAGE:a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0, PROMEDIO:a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0, MIN:a => Math.min(...a), MAX:a => Math.max(...a), COUNT:a => a.length, CONTAR:a => a.length};
+    for (let k = 0; k < 10; k++){
+      const n = e.replace(/(SUM|SUMA|AVERAGE|PROMEDIO|MIN|MAX|COUNT|CONTAR)\(([^()]*)\)/, (_, fn, args) => {
+        const vals = args.split(',').flatMap(a => { a = a.trim(); const rg = a.match(/^([A-Z]+\d+):([A-Z]+\d+)$/); return rg ? range(rg[1], rg[2], d) : /^[A-Z]+\d+$/.test(a) ? [val(a, d)] : isNum(a) ? [+a] : []; });
+        return String(FN[fn](vals));
+      });
+      if (n === e) break; e = n;
+    }
+    e = e.replace(/\bROUND\(([^,()]+),\s*(\d+)\)/g, (_, x, dgt) => `(Math.round((${x})*1e${dgt})/1e${dgt})`).replace(/[A-Z]+\d+/g, ref => '(' + val(ref, d) + ')');
+    if (!/^[\d+\-*/().\s,eMathroundE]*$/.test(e)) return NaN;
+    try { return Function('"use strict";return (' + e + ')')(); } catch(_){ return NaN; }
+  };
+  return calc;
+}
+function fmtShow(v, f){
+  if (typeof v !== 'number' || !isFinite(v)) return v;
+  if (f === 'moneda') return '$' + Math.round(v).toLocaleString('es-CL');
+  if (f === 'porcentaje') return (v * 100).toLocaleString('es-CL', {maximumFractionDigits:1}) + '%';
+  if (f === 'entero') return Math.round(v).toLocaleString('es-CL');
+  return v.toLocaleString('es-CL', {maximumFractionDigits:2});
+}
+let vSheet = 0;
+function excelHTML(d){
+  const hojas = d.hojas || []; vSheet = Math.min(vSheet, Math.max(0, hojas.length - 1));
+  const hj = hojas[vSheet]; if (!hj) return '<p>Libro vacío.</p>';
+  const {cols, filas} = sheetRows(hj), header = cols.map(c => c.titulo), calc = evalFormulas(header, filas);
+  const tabs = hojas.length > 1 ? `<div class="chips" style="margin-bottom:10px">${hojas.map((x, i) => `<button class="chip ${i === vSheet ? 'on' : ''}" data-v="sheet" data-i="${i}" style="${i === vSheet ? 'background:#0a66c2;color:#fff;border-color:#0a66c2' : 'background:#fff;color:#333;border-color:#ccc'}">${esc(x.nombre || 'Hoja ' + (i + 1))}</button>`).join('')}</div>` : '';
+  return tabs + `<table><thead><tr>${header.map(t => `<th>${esc(t)}</th>`).join('')}</tr></thead><tbody>${filas.map((r, ri) => `<tr${hj.total && ri === filas.length - 1 ? ' style="font-weight:700;background:#eef3f8"' : ''}>${cols.map((cc, ci) => {
+    let v = r[ci] ?? ''; const isF = typeof v === 'string' && v.startsWith('=');
+    if (isF){ const x = calc(v); v = isFinite(x) ? x : v; }
+    else if (isNum(v) && cc.formato !== 'texto') v = +String(v).replace(',', '.');
+    const num = typeof v === 'number';
+    return `<td style="${num ? 'text-align:right;' : ''}${isF ? 'color:#0a5;' : ''}" title="${isF ? esc(r[ci]) : ''}">${esc(fmtShow(v, cc.formato))}</td>`;
+  }).join('')}</tr>`).join('')}</tbody></table><p style="font-size:12px;color:#777;margin-top:8px">Las celdas en verde son fórmulas: se calculan aquí como vista previa y Excel las recalcula al abrir.</p>`;
+}
+async function buildXLSX(d, titulo){
+  await loadScript('lib/xlsx.bundle.js');
+  const wb = XLSX.utils.book_new(), border = {top:{style:'thin', color:{rgb:'BFC9D4'}}, bottom:{style:'thin', color:{rgb:'BFC9D4'}}, left:{style:'thin', color:{rgb:'BFC9D4'}}, right:{style:'thin', color:{rgb:'BFC9D4'}}};
+  const used = new Set();
+  (d.hojas || []).forEach((hj, hi) => {
+    const {cols, filas} = sheetRows(hj), ws = {};
+    cols.forEach((cc, ci) => { ws[colL(ci) + 1] = {t:'s', v:String(cc.titulo ?? ''), s:{font:{bold:true, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'0B2A44'}}, alignment:{vertical:'center', wrapText:true}, border}}; });
+    filas.forEach((r, ri) => cols.forEach((cc, ci) => {
+      let v = r[ci]; const addr = colL(ci) + (ri + 2), last = hj.total && ri === filas.length - 1;
+      const s = {border, numFmt:XL_FMT[cc.formato] || 'General', alignment:{vertical:'top', wrapText:cc.formato === 'texto' || !cc.formato}, ...(last ? {font:{bold:true}, fill:{fgColor:{rgb:'E3ECF5'}}} : ri % 2 ? {fill:{fgColor:{rgb:'F4F7FA'}}} : {})};
+      if (v === undefined || v === null || v === ''){ ws[addr] = {t:'s', v:'', s}; return; }
+      if (typeof v === 'string' && v.startsWith('=')) ws[addr] = {t:'n', f:v.slice(1), s};
+      else if (cc.formato === 'fecha' && /^\d{4}-\d{2}-\d{2}/.test(v)){ const [Y, M, D] = v.slice(0,10).split('-').map(Number); ws[addr] = {t:'n', v:Math.round((Date.UTC(Y, M - 1, D) - Date.UTC(1899, 11, 30)) / 864e5), z:'dd-mm-yyyy', s}; }
+      else if (cc.formato !== 'texto' && isNum(v)) ws[addr] = {t:'n', v:+String(v).replace(',', '.'), s};
+      else ws[addr] = {t:'s', v:String(v), s};
+    }));
+    ws['!ref'] = 'A1:' + colL(Math.max(0, cols.length - 1)) + (filas.length + 1);
+    ws['!cols'] = cols.map((cc, ci) => ({wch:cc.ancho || Math.min(50, Math.max(10, String(cc.titulo || '').length + 2, ...filas.slice(0, 50).map(r => String(r[ci] ?? '').length + 2)))}));
+    if (filas.length) ws['!autofilter'] = {ref:'A1:' + colL(cols.length - 1) + (filas.length + 1 - (hj.total ? 1 : 0))};
+    let nm = String(hj.nombre || 'Hoja ' + (hi + 1)).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31) || 'Hoja';
+    while (used.has(nm)) nm = nm.slice(0, 28) + ' ' + (hi + 1); used.add(nm);
+    XLSX.utils.book_append_sheet(wb, ws, nm);
+  });
+  wb.Props = {Title:titulo, Author:'KAI'};
+  return new Blob([XLSX.write(wb, {bookType:'xlsx', type:'array', cellStyles:true})], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+// Presentación Markdown → PowerPoint con diseño
+function mdSlide(src){
+  const L = src.split('\n'); let title = '', sub = '', level = 0; const items = [], notes = []; let table = null, inNotes = false;
+  for (let i = 0; i < L.length; i++){
+    const l = L[i]; let m;
+    if (inNotes){ notes.push(l); continue; }
+    if (/^\s*(notas?|notas del orador)\s*:/i.test(l)){ inNotes = true; notes.push(l.replace(/^\s*(notas?|notas del orador)\s*:\s*/i, '')); continue; }
+    if ((m = l.match(/^(#{1,3})\s+(.*)/))){ if (!title){ title = m[2]; level = m[1].length; } else if (!sub && !items.length) sub = m[2]; else items.push({t:m[2], b:true}); continue; }
+    if (/^\s*\|.*\|\s*$/.test(l)){
+      const cells = x => x.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim().replace(/\*\*/g, ''));
+      if (!table) table = []; if (!/^[\s|:-]+$/.test(l)) table.push(cells(l)); continue;
+    }
+    if ((m = l.match(/^(\s*)([-*+]|\d+[.)])\s+(.*)/))){ items.push({t:m[3], lvl:Math.min(3, Math.floor(m[1].length / 2)), num:/\d/.test(m[2])}); continue; }
+    if (l.trim() && !/^-{3,}$/.test(l.trim())) items.push({t:l.trim(), p:true});
+  }
+  return {title, sub, level, items, notes:notes.join('\n').trim(), table};
+}
+async function buildPPTX(c){
+  await loadScript('lib/pptxgen.bundle.js');
+  const P = new PptxGenJS(); P.layout = 'LAYOUT_WIDE'; P.author = 'KAI'; P.title = c.titulo;
+  const NAVY = '0B2A44', CY = '1FB6E0', INK = '1E2A36', FONT = 'Calibri';
+  const rich = t => { const parts = []; String(t).split(/(\*\*[^*]+\*\*)/).forEach(s => { if (!s) return; const b = /^\*\*.*\*\*$/.test(s); parts.push({text:b ? s.slice(2, -2) : s.replace(/[*_`]/g, ''), options:{bold:b}}); }); return parts; };
+  const slides = slidesOf(c.contenido).map(mdSlide), total = slides.length;
+  slides.forEach((s, i) => {
+    const sl = P.addSlide();
+    const cover = i === 0 && (s.level === 1 || !s.items.length);
+    if (cover){
+      sl.background = {color:NAVY};
+      sl.addShape(P.ShapeType.rect, {x:0.8, y:3.55, w:1.6, h:0.08, fill:{color:CY}, line:{color:CY}});
+      sl.addText(s.title || c.titulo, {x:0.8, y:1.6, w:11.7, h:1.9, fontFace:FONT, fontSize:44, bold:true, color:'FFFFFF', valign:'bottom', fit:'shrink'});
+      const sub = s.sub || s.items.map(x => x.t).join(' · ');
+      if (sub) sl.addText(rich(sub), {x:0.8, y:3.85, w:11.7, h:1.2, fontFace:FONT, fontSize:22, color:'BFE9F7', valign:'top', fit:'shrink'});
+      sl.addText(new Date().toLocaleDateString('es-CL', {month:'long', year:'numeric'}), {x:0.8, y:6.6, w:6, h:0.4, fontFace:FONT, fontSize:12, color:'8FB3CC'});
+    } else {
+      sl.background = {color:'FFFFFF'};
+      sl.addShape(P.ShapeType.rect, {x:0, y:0, w:13.33, h:0.12, fill:{color:CY}, line:{color:CY}});
+      sl.addText(s.title || '', {x:0.6, y:0.35, w:12.1, h:0.95, fontFace:FONT, fontSize:30, bold:true, color:NAVY, valign:'middle', fit:'shrink'});
+      sl.addShape(P.ShapeType.line, {x:0.6, y:1.35, w:12.1, h:0, line:{color:'D6E0EA', width:1}});
+      let y = 1.6;
+      if (s.sub){ sl.addText(rich(s.sub), {x:0.6, y, w:12.1, h:0.5, fontFace:FONT, fontSize:18, color:CY, bold:true}); y += 0.6; }
+      const hasTable = s.table && s.table.length;
+      if (s.items.length){
+        const runs = [];
+        s.items.forEach(it => rich(it.t).forEach((part, k, arr) => runs.push({text:part.text, options:{...part.options, ...(k === 0 && !it.p ? {bullet:it.num ? {type:'number'} : {code:'25A0'}, indentLevel:it.lvl || 0} : {}), ...(it.b ? {bold:true, color:NAVY} : {}), breakLine:k === arr.length - 1, paraSpaceAfter:8}})));
+        sl.addText(runs, {x:0.6, y, w:hasTable ? 5.6 : 12.1, h:6.7 - y, fontFace:FONT, fontSize:s.items.length > 7 ? 16 : 20, color:INK, valign:'top', fit:'shrink'});
+      }
+      if (hasTable){
+        const rows = s.table.map((r, ri) => r.map(cell => ({text:cell, options:ri === 0 ? {bold:true, color:'FFFFFF', fill:{color:NAVY}} : {color:INK, fill:{color:ri % 2 ? 'FFFFFF' : 'F2F6FA'}}})));
+        const x = s.items.length ? 6.5 : 0.6;
+        sl.addTable(rows, {x, y, w:13.33 - x - 0.6, fontFace:FONT, fontSize:rows.length > 8 ? 11 : 14, border:{type:'solid', color:'C9D5E0', pt:0.75}, autoPage:false});
+      }
+      sl.addText(c.titulo, {x:0.6, y:7.0, w:9, h:0.35, fontFace:FONT, fontSize:10, color:'8A9AAA'});
+      sl.addText(`${i + 1} / ${total}`, {x:11.2, y:7.0, w:1.5, h:0.35, fontFace:FONT, fontSize:10, color:'8A9AAA', align:'right'});
+    }
+    if (s.notes) sl.addNotes(s.notes);
+  });
+  return P.write({outputType:'blob'});
+}
+const safeName = t => (t || 'kai').replace(/[\\/:*?"<>|]+/g, '').slice(0, 60);
+async function downloadOffice(c, kind){
+  if (kind === 'pptx'){ const b = await buildPPTX(c); download(safeName(c.titulo) + '.pptx', b.type || 'application/vnd.openxmlformats-officedocument.presentationml.presentation', b); return; }
+  const d = c.tipo === 'excel' ? parseExcel(c) : csvToExcel(c);
+  if (!d) throw new Error('El contenido de este Excel no es válido.');
+  download(safeName(c.titulo) + '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', await buildXLSX(d, c.titulo));
+}
+
 async function openViewer(id){
   const c = (await dbAll('creaciones')).find(x => x.id === id); if (!c) return;
   if (vCur !== id) vSlide = 0;
   vCur = id; vDelArm = false;
   $('viewer').classList.add('open'); $('drawer').classList.remove('open');
   $('vTitle').textContent = c.titulo; $('vTipo').textContent = TIPOS[c.tipo] || c.tipo;
-  const vb = $('vBody'); vb.className = 'vbody' + (c.tipo === 'documento' || c.tipo === 'tabla' ? ' doc' : c.tipo === 'app' ? ' app' : '');
+  if (vCur !== id) vSheet = 0;
+  const vb = $('vBody'); vb.className = 'vbody' + (['documento','tabla','excel'].includes(c.tipo) ? ' doc' : c.tipo === 'app' ? ' app' : '');
   const btn = (act, label) => `<button class="btn sm" data-v="${act}">${label}</button>`;
-  $('vTools').innerHTML = [btn('copy','Copiar'), btn('dl', c.tipo === 'documento' ? 'Descargar Word' : c.tipo === 'tabla' ? 'Descargar Excel (CSV)' : 'Descargar'),
+  const pbtn = (act, label) => `<button class="btn sm p" data-v="${act}">${label}</button>`;
+  $('vTools').innerHTML = [
+    c.tipo === 'presentacion' ? pbtn('pptx', 'Descargar PowerPoint') : '',
+    c.tipo === 'excel' || c.tipo === 'tabla' ? pbtn('xlsx', 'Descargar Excel') : '',
+    c.tipo === 'documento' ? pbtn('dl', 'Descargar Word') : '',
+    c.tipo === 'excel' ? '' : btn('copy','Copiar'),
+    c.tipo === 'presentacion' ? btn('dl', 'Descargar HTML') : c.tipo === 'tabla' ? btn('dl', 'CSV') : c.tipo === 'documento' || c.tipo === 'excel' ? '' : btn('dl', 'Descargar'),
     c.tipo !== 'app' ? btn('print', 'PDF / Imprimir') : btn('reload', 'Reiniciar app'),
     c.versiones && c.versiones.length ? btn('undo', 'Deshacer último cambio') : '', btn('del', 'Eliminar')].join('');
   if (c.tipo === 'app'){
@@ -1085,6 +1274,7 @@ async function openViewer(id){
     vb.innerHTML = `<div class="slide md">${renderMD(sl[vSlide] || '')}</div>`;
     $('vTools').insertAdjacentHTML('beforeend', `<span class="snav" style="border:0;padding:0;margin-left:auto">${btn('prev','‹')}<span class="small">${vSlide + 1} / ${sl.length}</span>${btn('next','›')}</span>`);
   } else if (c.tipo === 'tabla') vb.innerHTML = `<div class="md">${csvTable(c.contenido)}</div>`;
+  else if (c.tipo === 'excel'){ const d = parseExcel(c); vb.innerHTML = `<div class="md">${d ? excelHTML(d) : '<p>El contenido no es un libro Excel válido. Pídele a KAI que lo rehaga.</p>'}</div>`; }
   else if (c.tipo === 'codigo') vb.innerHTML = `<pre class="code">${esc(c.contenido)}</pre>`;
   else vb.innerHTML = `<div class="md">${renderMD(c.contenido)}</div>`;
 }
@@ -1130,7 +1320,8 @@ Cómo responder:
 - Cuando el resultado sea algo para usar, guardar, imprimir o compartir (procedimiento, informe, carta, correo largo, acta, plan, checklist, presentación, planilla, app, calculadora, formulario o código de más de 10 líneas), créalo con crear_creacion y no lo pegues en el chat. Hazlo completo y de calidad profesional en el primer intento, sin pedir detalles: asume lo razonable y menciona en una frase qué supusiste.
 - Para cambiar algo ya creado: usa leer_creacion y luego, si el cambio es puntual (agregar o quitar una sección, corregir datos), editar_creacion, que es mucho más rápido; usa modificar_creacion con el contenido COMPLETO solo para reescrituras grandes ("hazlo más corto", "tradúcelo", "cambia todo el formato"). Si no dice cuál, es la que está abierta o la más reciente.
 - Apps: un único archivo HTML completo, autocontenido, responsive, en español, con buen diseño; puede usar librerías de cdnjs o jsdelivr. Debe funcionar sola, sin servidor.
-- Presentaciones: Markdown con diapositivas separadas por una línea con ---, títulos claros y pocas viñetas por diapositiva.
+- Presentaciones (y cuando pidan un PowerPoint): tipo presentacion, Markdown con diapositivas separadas por ---, portada con «# Título» y subtítulo, luego «## Título» con 3 a 6 viñetas cortas, tablas cuando ayuden y «Notas: …» con lo que debe decir el presentador. KAI la descarga como .pptx.
+- Planillas, presupuestos, cubicaciones, programas, registros o cuando pidan un Excel: tipo excel con JSON válido, fórmulas reales para totales y cálculos (no números calculados a mano), formatos correctos y varias hojas si ayuda (por ejemplo Datos y Resumen).
 - Proyectos: para "arma un plan" crea el proyecto con 6 a 15 tareas con fechas y prioridad. Agenda: reuniones y citas con hora van al calendario con crear_evento; trabajos con plazo son tareas de un proyecto.
 - La app ya tiene su propia agenda-calendario, proyectos, creaciones y notas: para mostrarlos usa navegar. Nunca construyas un calendario o agenda como creación salvo que pidan expresamente una app aparte. Para volver a la pantalla principal usa navegar con vista inicio.
 - Si el usuario adjunta fotos o archivos, analízalos con atención: describe lo relevante (en terreno: estado de equipos, daños, riesgos, condiciones inseguras), extrae datos, resume o úsalos para crear lo que pida (por ejemplo, convertir un PDF en procedimiento o una foto en informe de hallazgo).
@@ -1295,7 +1486,7 @@ async function fileToAtt(f){
   if (f.type.startsWith('image/')){ const im = await shrinkImage(f); return {kind:'image', name, ...im}; }
   if (f.type === 'application/pdf' || ext === 'pdf'){ const d = await readAs(f, 'DataURL'); return {kind:'pdf', name, data:d.split(',')[1]}; }
   if (ext === 'xlsx' || ext === 'xls'){
-    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+    await loadScript('lib/xlsx.bundle.js');
     const wb = XLSX.read(await readAs(f, 'ArrayBuffer'), {type:'array'});
     const text = wb.SheetNames.map(s => `### Hoja: ${s}\n` + XLSX.utils.sheet_to_csv(wb.Sheets[s], {blankrows:false})).join('\n\n');
     return {kind:'text', name, text:text.slice(0, 150000)};
@@ -1480,6 +1671,12 @@ $('vTools').addEventListener('click', async e => {
   const act = b.dataset.v;
   if (act === 'copy'){ try { await navigator.clipboard.writeText(c.contenido); b.textContent = 'Copiado ✓'; } catch(_){ b.textContent = 'No se pudo copiar'; } setTimeout(() => b.textContent = 'Copiar', 1500); }
   if (act === 'dl'){ const x = exportOf(c); download(x.name, x.type, x.data); }
+  if (act === 'pptx' || act === 'xlsx'){
+    const t = b.textContent; b.textContent = 'Preparando…'; b.disabled = true;
+    try { await downloadOffice(c, act); } catch(err){ vStatus('No pude generar el archivo: ' + (err.message || err), true); }
+    b.textContent = t; b.disabled = false;
+  }
+  if (act === 'sheet'){ vSheet = +b.dataset.i; openViewer(c.id); }
   if (act === 'print') printHTML(printable(c));
   if (act === 'reload') openViewer(c.id);
   if (act === 'prev'){ vSlide = Math.max(0, vSlide - 1); openViewer(c.id); }

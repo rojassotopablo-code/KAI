@@ -1,6 +1,6 @@
 // KAI — service worker: deja la app disponible sin conexión.
-const CACHE = 'kai-v12';
-const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const CACHE = 'kai-v13';
+const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './lib/xlsx.bundle.js', './lib/pptxgen.bundle.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

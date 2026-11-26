@@ -56,6 +56,13 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v3.7 — Excel y PowerPoint reales
+- **PowerPoint (.pptx):** toda presentación se descarga como PowerPoint con diseño: portada azul, títulos, viñetas, tablas, número de diapositiva y **notas del orador**. Se puede editar en PowerPoint o Google Slides.
+- **Excel (.xlsx):** nuevo tipo de creación «Excel» con varias hojas, **fórmulas reales** (SUM, AVERAGE, IF, referencias entre hojas), formatos de moneda, porcentaje, fecha y números, encabezados con color, filas alternadas, filtros y fila TOTAL. En KAI se ve una vista previa con las fórmulas calculadas.
+- Las «tablas» también se descargan como Excel (.xlsx).
+- Por voz: «hazme un Excel de presupuesto para la mantención de la correa», «prepara un PowerPoint de 8 diapositivas sobre bloqueo de energías», «descárgalo en PowerPoint».
+- Las librerías van dentro de la app (carpeta `lib/`), así que funcionan sin internet.
+
 ## Cambios v3.6
 - Vincular el celular ahora es más fácil: el QR del PC es un enlace. Apunta con la **cámara normal del teléfono** y toca el enlace: KAI se abre ya vinculado y trae tus datos.
 - El código es más corto (QR menos denso) y KAI tiene un segundo lector de QR por si el navegador no trae uno.
