@@ -319,13 +319,46 @@ a{color:var(--cy)}
         <button class="btn" id="testVoice">Probar voz</button>
       </div>
 
+      <h3>Sincronización entre dispositivos</h3>
+      <div class="card" id="syncCard">
+        <div class="t"><strong id="syncState">Sin configurar</strong></div>
+        <div class="small" id="syncInfo">Tus proyectos, agenda, notas y creaciones se guardan en un repositorio privado de tu GitHub y aparecen en todos tus dispositivos.</div>
+      </div>
+      <details id="syncSetup">
+        <summary class="btn" style="display:inline-grid;place-items:center;list-style:none;margin-top:6px">Configurar en este dispositivo</summary>
+        <ol class="small" style="padding-left:18px;margin:12px 0">
+          <li>Crea un repositorio <b>privado</b> llamado <b>kai-datos</b>: <a href="https://github.com/new?name=kai-datos&visibility=private&description=Datos%20de%20KAI" target="_blank" rel="noopener">abrir GitHub</a> → <i>Create repository</i>.</li>
+          <li>Crea una llave de acceso: <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">abrir GitHub</a> → nombre «KAI», vencimiento a elección, <i>Repository access › Only select repositories › kai-datos</i>, en <i>Permissions › Contents</i> elige <b>Read and write</b> → <i>Generate token</i> y cópiala.</li>
+          <li>Pégala abajo y toca Conectar. En los demás dispositivos usa «Vincular con código QR».</li>
+        </ol>
+        <label for="syncRepo">Repositorio</label>
+        <input class="f" id="syncRepo" placeholder="usuario/kai-datos" autocomplete="off">
+        <label for="syncToken">Llave de acceso (token)</label>
+        <input class="f" id="syncToken" type="password" placeholder="github_pat_…" autocomplete="off">
+        <div class="row"><button class="btn p" id="syncConnect" type="button">Conectar y sincronizar</button></div>
+      </details>
+      <div class="row">
+        <button class="btn" id="syncNow" type="button">Sincronizar ahora</button>
+        <button class="btn" id="linkShow" type="button">Mostrar QR para otro dispositivo</button>
+        <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Vincular con código QR<input type="file" id="linkScan" accept="image/*" capture="environment" hidden></label>
+      </div>
+      <div id="linkBox" class="card" hidden style="margin-top:10px;text-align:center">
+        <div id="qr" style="display:inline-block;background:#fff;padding:10px;border-radius:8px"></div>
+        <p class="small">En el otro dispositivo abre KAI › Ajustes › <b>Vincular con código QR</b> y saca una foto a este código. Incluye tu llave de GitHub y tu API key: no lo compartas con nadie.</p>
+        <div class="row" style="justify-content:center"><button class="btn sm" id="linkCopy" type="button">Copiar como texto</button><button class="btn sm" id="linkHide" type="button">Ocultar</button></div>
+      </div>
+      <details style="margin-top:8px"><summary class="small" style="cursor:pointer">¿No puedes escanear? Pegar código de vinculación</summary>
+        <textarea class="f" id="linkText" placeholder="KAI1:…" style="margin-top:8px"></textarea>
+        <div class="row"><button class="btn sm" id="linkApply" type="button">Vincular</button></div>
+      </details>
+
       <h3>Respaldo</h3>
       <div class="row">
         <button class="btn" id="expBtn">Exportar datos</button>
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v3.4 · Fase 3</p>
+      <p class="note" id="ver">KAI v3.5 · Fase 3</p>
     </div>
   </div>
 </div>
@@ -353,10 +386,10 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6
 let db;
 function openDB(){
   return new Promise((res, rej) => {
-    const r = indexedDB.open('jarvis', 2);
+    const r = indexedDB.open('jarvis', 3);
     r.onupgradeneeded = () => {
       const d = r.result;
-      ['proyectos','notas','kv','creaciones','eventos'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
+      ['proyectos','notas','kv','creaciones','eventos','borrados'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -364,8 +397,12 @@ function openDB(){
 }
 const tx = (store, mode='readonly') => db.transaction(store, mode).objectStore(store);
 const dbAll = store => new Promise(r => { const q = tx(store).getAll(); q.onsuccess = () => r(q.result || []); q.onerror = () => r([]); });
-const dbPut = (store, v) => new Promise(r => { const q = tx(store,'readwrite').put(v); q.onsuccess = () => r(v); q.onerror = () => r(null); });
-const dbDel = (store, id) => new Promise(r => { const q = tx(store,'readwrite').delete(id); q.onsuccess = q.onerror = () => r(); });
+const dbPutRaw = (store, v) => new Promise(r => { const q = tx(store,'readwrite').put(v); q.onsuccess = () => r(v); q.onerror = () => r(null); });
+const dbDelRaw = (store, id) => new Promise(r => { const q = tx(store,'readwrite').delete(id); q.onsuccess = q.onerror = () => r(); });
+// Los datos que se sincronizan llevan la hora de su último cambio; los borrados dejan una marca para borrarse también en el otro dispositivo
+const SYNCED = ['proyectos','notas','eventos','creaciones'];
+const dbPut = (store, v) => { if (SYNCED.includes(store) && v){ v._mod = Date.now(); scheduleSync(); } return dbPutRaw(store, v); };
+const dbDel = async (store, id) => { if (SYNCED.includes(store)){ await dbPutRaw('borrados', {id:store + ':' + id, store, rid:id, _mod:Date.now()}); scheduleSync(); } return dbDelRaw(store, id); };
 const kvGet = async (k, d) => { const q = tx('kv').get(k); return new Promise(r => { q.onsuccess = () => r(q.result ? q.result.v : d); q.onerror = () => r(d); }); };
 const kvSet = (k, v) => dbPut('kv', {id:k, v});
 
@@ -1512,6 +1549,139 @@ $('impFile').addEventListener('change', async e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('drawer').classList.remove('open'); });
 
+/* ================= Sincronización (repositorio privado de GitHub) ================= */
+const SYNC_FILE = 'kai-datos.json';
+let syncTimer = null, syncing = false, syncAgain = false, syncSha = null, syncErrShown = false;
+const syncOn = () => !!(cfg.syncRepo && cfg.syncToken);
+function scheduleSync(ms = 4000){ if (!syncOn()) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(), ms); }
+const b64enc = s => { const b = new TextEncoder().encode(s); let bin = ''; for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(bin); };
+const b64dec = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\s/g, '')), c => c.charCodeAt(0)));
+async function gh(path, opts = {}){
+  const r = await fetch(`https://api.github.com/repos/${cfg.syncRepo}/contents/${path}`, {...opts, cache:'no-store', headers:{'Authorization':'Bearer ' + cfg.syncToken, 'Accept':opts.raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json', 'X-GitHub-Api-Version':'2022-11-28', ...(opts.body ? {'Content-Type':'application/json'} : {})}});
+  return r;
+}
+async function pullRemote(){
+  const r = await gh(SYNC_FILE);
+  if (r.status === 404) return {data:null, sha:null};
+  if (r.status === 401) throw new Error('La llave de GitHub no es válida o venció.');
+  if (r.status === 403) throw new Error('La llave de GitHub no tiene permiso de escritura en el repositorio (Contents: Read and write).');
+  if (!r.ok) throw new Error(`GitHub respondió ${r.status}.`);
+  const j = await r.json();
+  let text = j.encoding === 'base64' && j.content ? b64dec(j.content) : '';
+  if (!text){ const rr = await gh(SYNC_FILE, {raw:true}); if (!rr.ok) throw new Error(`GitHub respondió ${rr.status}.`); text = await rr.text(); } // archivos de más de 1 MB
+  return {data:JSON.parse(text || '{}'), sha:j.sha};
+}
+async function localSnapshot(){
+  const stores = {};
+  for (const s of SYNCED) stores[s] = (await dbAll(s)).map(x => { const {versiones, ...rest} = x; return rest; }); // el historial de versiones queda solo en cada dispositivo
+  return {formato:1, guardado:new Date().toISOString(), dispositivo:navigator.userAgent.slice(0, 80), stores, borrados:await dbAll('borrados')};
+}
+// Fusión registro por registro: gana el cambio más reciente; un borrado más nuevo que el registro lo elimina
+async function mergeRemote(remote){
+  let changedLocal = false, changedRemote = false;
+  const rb = new Map((remote.borrados || []).map(b => [b.id, b])), lb = new Map((await dbAll('borrados')).map(b => [b.id, b]));
+  for (const [id, b] of rb){ const l = lb.get(id); if (!l || (l._mod || 0) < (b._mod || 0)){ await dbPutRaw('borrados', b); lb.set(id, b); } }
+  for (const [id, b] of lb) if (!rb.has(id)) changedRemote = true;
+  for (const s of SYNCED){
+    const loc = new Map((await dbAll(s)).map(x => [x.id, x])), rem = new Map(((remote.stores || {})[s] || []).map(x => [x.id, x]));
+    for (const [id, rx] of rem){
+      const tomb = lb.get(s + ':' + id);
+      if (tomb && (tomb._mod || 0) >= (rx._mod || 0)){ if (loc.has(id)){ await dbDelRaw(s, id); loc.delete(id); changedLocal = true; } changedRemote = true; continue; }
+      const lx = loc.get(id);
+      if (!lx || (lx._mod || 0) < (rx._mod || 0)){ await dbPutRaw(s, lx && lx.versiones ? {...rx, versiones:lx.versiones} : rx); changedLocal = true; }
+      else if ((lx._mod || 0) > (rx._mod || 0)) changedRemote = true;
+    }
+    for (const [id, lx] of loc){
+      if (rem.has(id)) continue;
+      const tomb = lb.get(s + ':' + id);
+      if (tomb && (tomb._mod || 0) >= (lx._mod || 0)){ await dbDelRaw(s, id); changedLocal = true; }
+      else changedRemote = true;
+    }
+  }
+  return {changedLocal, changedRemote};
+}
+function syncStatus(t, err){
+  const s = document.getElementById('syncState'); if (!s) return;
+  s.textContent = t; s.style.color = err ? 'var(--bad)' : '';
+  const i = document.getElementById('syncInfo'); if (i && syncOn()) i.textContent = `Repositorio privado: ${cfg.syncRepo}`;
+}
+async function syncNow(manual){
+  if (!syncOn()){ if (manual) syncStatus('Primero configura la sincronización.', true); return; }
+  if (syncing){ syncAgain = true; return; }
+  syncing = true; syncStatus('Sincronizando…');
+  try {
+    for (let intento = 0; intento < 3; intento++){
+      const {data, sha} = await pullRemote();
+      let changedLocal = false, changedRemote = !data;
+      if (data){ ({changedLocal, changedRemote} = await mergeRemote(data)); }
+      if (changedLocal){ refreshUI(); if (vCur) openViewer(vCur); }
+      if (!changedRemote){ syncSha = sha; break; }
+      const snap = await localSnapshot();
+      const put = await gh(SYNC_FILE, {method:'PUT', body:JSON.stringify({message:'KAI: sincronización', content:b64enc(JSON.stringify(snap)), ...(sha ? {sha} : {})})});
+      if (put.status === 409 || put.status === 422) continue; // otro dispositivo guardó justo antes: se vuelve a fusionar
+      if (put.status === 401) throw new Error('La llave de GitHub no es válida o venció.');
+      if (put.status === 403 || put.status === 404) throw new Error('La llave no tiene permiso de escritura en ' + cfg.syncRepo + ' (Contents: Read and write).');
+      if (!put.ok) throw new Error(`GitHub respondió ${put.status} al guardar.`);
+      syncSha = (await put.json()).content.sha; break;
+    }
+    cfg.syncLast = new Date().toISOString(); await kvSet('cfg', cfg); syncErrShown = false;
+    syncStatus('Sincronizado ' + new Date().toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'}));
+  } catch(e){
+    const msg = e.message && !/fetch/i.test(e.message) ? e.message : 'Sin conexión: se sincroniza cuando vuelva internet.';
+    syncStatus(msg, true);
+    if ((manual || !syncErrShown) && !/Sin conexión/.test(msg)){ syncErrShown = true; addMsg('e', 'Sincronización: ' + msg); }
+  } finally {
+    syncing = false;
+    if (syncAgain){ syncAgain = false; scheduleSync(1000); }
+  }
+}
+// sincroniza al abrir, al volver a la app y cada 2 minutos mientras está abierta
+setInterval(() => { if (syncOn() && document.visibilityState === 'visible') syncNow(); }, 120000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleSync(500); });
+window.addEventListener('online', () => scheduleSync(500));
+
+/* ---------- Vincular otro dispositivo ---------- */
+const linkCode = () => 'KAI1:' + b64enc(JSON.stringify({r:cfg.syncRepo, t:cfg.syncToken, k:cfg.apiKey, m:cfg.model, a:cfg.about}));
+async function applyLink(code){
+  const m = String(code || '').trim().match(/KAI1:([A-Za-z0-9+/=]+)/); if (!m) throw new Error('Código no válido.');
+  const d = JSON.parse(b64dec(m[1]));
+  Object.assign(cfg, {syncRepo:d.r || cfg.syncRepo, syncToken:d.t || cfg.syncToken, apiKey:d.k || cfg.apiKey, model:d.m || cfg.model, about:cfg.about || d.a || ''});
+  await kvSet('cfg', cfg); fillCfg(); fillSync();
+  addMsg('s', 'Dispositivo vinculado. Trayendo tus datos…'); await syncNow(true);
+}
+function fillSync(){
+  if (!$('syncRepo')) return;
+  const user = (location.hostname.match(/^([^.]+)\.github\.io$/) || [])[1];
+  $('syncRepo').value = cfg.syncRepo || (user ? user + '/kai-datos' : '');
+  $('syncToken').value = cfg.syncToken || '';
+  $('syncSetup').open = !syncOn();
+  syncStatus(syncOn() ? (cfg.syncLast ? 'Último: ' + new Date(cfg.syncLast).toLocaleString('es-CL', {dateStyle:'short', timeStyle:'short'}) : 'Configurado') : 'Sin configurar');
+}
+$('syncConnect').addEventListener('click', async () => {
+  const repo = $('syncRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$|\/$/g, ''), tok = $('syncToken').value.trim();
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !tok){ syncStatus('Completa el repositorio (usuario/kai-datos) y la llave.', true); return; }
+  cfg.syncRepo = repo; cfg.syncToken = tok; await kvSet('cfg', cfg); fillSync(); await syncNow(true);
+});
+$('syncNow').addEventListener('click', () => syncNow(true));
+$('linkShow').addEventListener('click', async () => {
+  if (!syncOn()){ syncStatus('Primero configura la sincronización en este dispositivo.', true); return; }
+  $('linkBox').hidden = false; $('qr').innerHTML = '';
+  try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'); new QRCode($('qr'), {text:linkCode(), width:240, height:240, correctLevel:QRCode.CorrectLevel.L}); }
+  catch(_){ $('qr').textContent = 'No pude dibujar el QR sin internet; usa «Copiar como texto».'; }
+});
+$('linkHide').addEventListener('click', () => { $('linkBox').hidden = true; $('qr').innerHTML = ''; });
+$('linkCopy').addEventListener('click', async () => { try { await navigator.clipboard.writeText(linkCode()); $('linkCopy').textContent = 'Copiado ✓'; } catch(_){ $('linkText').value = linkCode(); } });
+$('linkApply').addEventListener('click', async () => { try { await applyLink($('linkText').value); $('linkText').value = ''; } catch(e){ syncStatus(e.message, true); } });
+$('linkScan').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    if (!('BarcodeDetector' in window)) throw new Error('Este navegador no lee códigos QR. Usa «Pegar código de vinculación».');
+    const codes = await new BarcodeDetector({formats:['qr_code']}).detect(await createImageBitmap(f));
+    if (!codes.length) throw new Error('No encontré un código QR en la foto. Acércate más e inténtalo de nuevo.');
+    await applyLink(codes[0].rawValue);
+  } catch(err){ syncStatus(err.message, true); addMsg('e', err.message); }
+});
+
 /* ================= Instalación como app ================= */
 let installEvt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('instBtn').hidden = false; });
@@ -1540,7 +1710,7 @@ async function checkFiles(){
   if (!cfg.apiKey) addMsg('s', 'Modo básico: agrega tu API key en ☰ › Ajustes para conversar libremente.');
   if (cfg.autoWake && SR) toggleWake(true); else updateWakeBtn();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
-  checkFiles(); setTimeout(checkReminders, 3000);
+  checkFiles(); setTimeout(checkReminders, 3000); fillSync(); if (syncOn()) setTimeout(() => syncNow(), 800);
   if (await kvGet('lastBrief', '') !== hoy()){
     const r = await pendientes(7);
     const evH = (await allEv()).filter(e => e.fecha === hoy());

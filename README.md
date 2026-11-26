@@ -56,6 +56,14 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v3.5 — Sincronización entre celular y PC
+- Tus proyectos, agenda, notas y creaciones se guardan en un **repositorio privado de tu GitHub** (`kai-datos`) y aparecen en todos tus dispositivos. Gratis, sin servicios de terceros.
+- Se sincroniza solo: al abrir KAI, al volver a la app, 4 segundos después de cada cambio y cada 2 minutos. Sin internet, sigue funcionando y sincroniza cuando vuelve la conexión.
+- Si cambias cosas en los dos dispositivos, se combinan registro por registro (gana el cambio más reciente) y los borrados también se sincronizan.
+- **Configuración (una vez, en el PC):** Ajustes › Sincronización › Configurar en este dispositivo, y sigue los 3 pasos (crear repositorio privado, crear llave, conectar).
+- **Segundo dispositivo:** en el PC toca *Mostrar QR para otro dispositivo*; en el celular, Ajustes › *Vincular con código QR* y saca una foto al código. Queda con tu llave de GitHub y tu API key, sin escribir nada.
+- No se sincronizan: la conversación, las variantes de voz aprendidas ni el historial de versiones de las creaciones (cada dispositivo guarda el suyo).
+
 ## Cambios v3.4 — Fotos y archivos
 - Botón 📎 al lado del cuadro de texto (también dentro de una creación abierta). En el celular permite sacar una foto con la cámara o elegirla de la galería.
 - Acepta **fotos**, **PDF**, **Excel** (.xlsx/.xls), **Word** (.docx) y archivos de texto (.txt, .csv, .md, .json), hasta 15 MB cada uno y varios a la vez.
