@@ -56,6 +56,14 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v4.0 — KPIs con gráficos
+- Nueva pestaña **KPIs**: cada indicador con su último valor, semáforo frente a la meta (verde cumple, ámbar a menos de 10%, rojo no cumple), flecha de tendencia y minigráfico. Agrupados por categoría.
+- Al tocar un KPI: gráfico con línea de meta y puntos de color, último valor, promedio, % de periodos en meta, filtros 30 días / 90 días / 12 meses / todo, historial y registro manual.
+- **Por voz:** «KAI, cumplimiento del programa esta semana 92%», «este mes tuvimos 1 incidente con tiempo perdido», «¿cómo vamos en disponibilidad?», «muéstrame el KPI de ausentismo». Si el KPI no existe, KAI lo crea con meta y sentido razonables.
+- **Informes:** botón «Pedir informe a KAI» (PowerPoint ejecutivo con datos reales) y exportación a Excel con hoja resumen y una hoja por KPI con fórmula de cumplimiento.
+- Set de KPIs sugeridos para operaciones, seguridad y personal (solo definiciones, sin datos).
+- El resumen diario avisa qué KPIs toca registrar según su frecuencia. Los KPIs se sincronizan entre dispositivos.
+
 ## Cambios v3.7 — Excel y PowerPoint reales
 - **PowerPoint (.pptx):** toda presentación se descarga como PowerPoint con diseño: portada azul, títulos, viñetas, tablas, número de diapositiva y **notas del orador**. Se puede editar en PowerPoint o Google Slides.
 - **Excel (.xlsx):** nuevo tipo de creación «Excel» con varias hojas, **fórmulas reales** (SUM, AVERAGE, IF, referencias entre hojas), formatos de moneda, porcentaje, fecha y números, encabezados con color, filas alternadas, filtros y fila TOTAL. En KAI se ve una vista previa con las fórmulas calculadas.

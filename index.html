@@ -208,6 +208,22 @@ a{color:var(--cy)}
 .ev .hr{width:52px;flex:none;font-size:14px;color:var(--cy);white-space:nowrap}
 .ev .hr.k{color:var(--warn)}
 .ev .b{flex:1}
+/* KPIs */
+.kgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.kcard{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--mute);border-radius:12px;padding:12px;cursor:pointer;text-align:left;color:var(--ink);font:inherit}
+.kcard.ok{border-left-color:var(--ok)}.kcard.bad{border-left-color:var(--bad)}.kcard.warn{border-left-color:var(--warn)}
+.kcard .kn{font-size:14px;color:var(--mute);display:flex;gap:6px;justify-content:space-between}
+.kcard .kv{font-family:Rajdhani,sans-serif;font-size:34px;font-weight:700;line-height:1.1;margin:4px 0;white-space:nowrap}
+.kcard .kv small{font-size:15px;color:var(--mute);font-weight:500;margin-left:4px}
+.kcard svg{width:100%;height:36px;display:block}
+.kmeta{font-size:12px;color:var(--mute);display:flex;justify-content:space-between;gap:6px}
+.up{color:var(--ok)}.down{color:var(--bad)}.flat{color:var(--mute)}
+.kchart{position:relative;height:240px;margin:8px 0 4px}.kchart svg{position:absolute;inset:0;width:100%;height:100%}
+.kstat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.kstat div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px}
+.kstat b{display:block;font-family:Rajdhani,sans-serif;font-size:22px}
+.kstat span{font-size:12px;color:var(--mute)}
+.kcat{font-size:13px;color:var(--mute);margin:14px 0 6px;font-weight:600}
 </style>
 </head>
 <body>
@@ -250,6 +266,7 @@ a{color:var(--cy)}
     <div class="tabs">
       <button class="tab on" data-p="pProy">Proyectos</button>
       <button class="tab" data-p="pAgenda">Agenda</button>
+      <button class="tab" data-p="pKpi">KPIs</button>
       <button class="tab" data-p="pCrea">Creaciones</button>
       <button class="tab" data-p="pNotas">Notas</button>
       <button class="tab" data-p="pAj">Ajustes</button>
@@ -259,6 +276,8 @@ a{color:var(--cy)}
     <div class="pane on" id="pProy"></div>
 
     <div class="pane" id="pAgenda"></div>
+
+    <div class="pane" id="pKpi"></div>
 
     <div class="pane" id="pCrea"></div>
 
@@ -358,7 +377,7 @@ a{color:var(--cy)}
         <label class="btn" style="display:grid;place-items:center;margin:0;color:var(--ink)">Importar<input type="file" id="impFile" accept=".json" hidden></label>
         <button class="btn" id="clrChat">Borrar conversación</button>
       </div>
-      <p class="note" id="ver">KAI v3.7 · Fase 3</p>
+      <p class="note" id="ver">KAI v4.0 · Fase 4</p>
     </div>
   </div>
 </div>
@@ -386,10 +405,10 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6
 let db;
 function openDB(){
   return new Promise((res, rej) => {
-    const r = indexedDB.open('jarvis', 3);
+    const r = indexedDB.open('jarvis', 4);
     r.onupgradeneeded = () => {
       const d = r.result;
-      ['proyectos','notas','kv','creaciones','eventos','borrados'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
+      ['proyectos','notas','kv','creaciones','eventos','borrados','kpis','kpireg'].forEach(s => d.objectStoreNames.contains(s) || d.createObjectStore(s, {keyPath:'id'}));
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -400,7 +419,7 @@ const dbAll = store => new Promise(r => { const q = tx(store).getAll(); q.onsucc
 const dbPutRaw = (store, v) => new Promise(r => { const q = tx(store,'readwrite').put(v); q.onsuccess = () => r(v); q.onerror = () => r(null); });
 const dbDelRaw = (store, id) => new Promise(r => { const q = tx(store,'readwrite').delete(id); q.onsuccess = q.onerror = () => r(); });
 // Los datos que se sincronizan llevan la hora de su último cambio; los borrados dejan una marca para borrarse también en el otro dispositivo
-const SYNCED = ['proyectos','notas','eventos','creaciones'];
+const SYNCED = ['proyectos','notas','eventos','creaciones','kpis','kpireg'];
 const dbPut = (store, v) => { if (SYNCED.includes(store) && v){ v._mod = Date.now(); scheduleSync(); } return dbPutRaw(store, v); };
 const dbDel = async (store, id) => { if (SYNCED.includes(store)){ await dbPutRaw('borrados', {id:store + ':' + id, store, rid:id, _mod:Date.now()}); scheduleSync(); } return dbDelRaw(store, id); };
 const kvGet = async (k, d) => { const q = tx('kv').get(k); return new Promise(r => { q.onsuccess = () => r(q.result ? q.result.v : d); q.onerror = () => r(d); }); };
@@ -498,7 +517,7 @@ log.addEventListener('scroll', () => {
 $('toBot').addEventListener('click', () => { $('toBot').classList.remove('on'); scrollLog(true); });
 function emptyLog(){
   log.parentElement.classList.remove('chat');
-  log.innerHTML = `<div class="empty">Prueba: <b>«KAI, crea un procedimiento de cambio de polines»</b> · <b>«Agenda reunión el jueves a las 10»</b> · <b>«Arma un plan para el quincho»</b><br><b>«¿Qué tengo pendiente hoy?»</b> · <b>«Completa la tarea comprar cemento del quincho»</b></div>`;
+  log.innerHTML = `<div class="empty">Prueba: <b>«KAI, cumplimiento del programa esta semana 92%»</b> · <b>«KAI, crea un procedimiento de cambio de polines»</b> · <b>«Agenda reunión el jueves a las 10»</b> · <b>«Arma un plan para el quincho»</b><br><b>«¿Qué tengo pendiente hoy?»</b> · <b>«Completa la tarea comprar cemento del quincho»</b></div>`;
 }
 
 /* ================= Voz: salida (TTS) ================= */
@@ -725,6 +744,7 @@ const addDays = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.ge
 const fmtD = iso => iso ? new Date(iso + 'T12:00').toLocaleDateString('es-CL', {day:'numeric', month:'short'}) : '';
 const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '';
 const PRI = ['alta','media','baja'], EST = ['activo','pausado','terminado'];
+const FREQ = {diaria:1, semanal:7, mensual:30, trimestral:91, anual:365};
 const TIPOS = {documento:'Documento', presentacion:'Presentación', excel:'Excel', app:'App', tabla:'Tabla', codigo:'Código'};
 
 function normTask(t){
@@ -886,8 +906,48 @@ const actions = {
       return {ok:true, archivo:c.titulo + '.' + (formato === 'word' ? 'doc' : formato)};
     } catch(e){ return {error:String(e.message || e)}; }
   },
-  async navegar({vista, fecha, proyecto, creacion}){
-    const ok = await goView(vista, {fecha, proyecto, creacion});
+  async crear_kpi(a){
+    if (!a.nombre) return {error:'Falta el nombre'};
+    const ex = await findKpi(a.nombre); if (ex && norm(ex.nombre) === norm(a.nombre)) return {error:'Ya existe un KPI con ese nombre', kpi:ex.nombre};
+    const k = {id:uid(), nombre:a.nombre, unidad:a.unidad || '', meta:a.meta === undefined || a.meta === null || a.meta === '' ? '' : +a.meta, sentido:a.sentido === 'menor' ? 'menor' : 'mayor', frecuencia:FREQ[a.frecuencia] ? a.frecuencia : 'mensual', categoria:a.categoria || '', descripcion:a.descripcion || '', creado:new Date().toISOString()};
+    await dbPut('kpis', k); refreshUI();
+    return {ok:true, kpi:k.nombre};
+  },
+  async registrar_kpi({kpi, valor, fecha, nota = ''}){
+    const k = await findKpi(kpi); if (!k) return {error:`No encontré el KPI "${kpi}"`, disponibles:(await allKpi()).map(x => x.nombre)};
+    if (!isFinite(+valor)) return {error:'El valor debe ser un número'};
+    fecha = validDate(fecha) || hoy();
+    // si ya hay un registro ese mismo día, se reemplaza
+    const prev = (await regsOf(k.id)).find(r => r.fecha === fecha);
+    const reg = {id:prev ? prev.id : uid(), kpi:k.id, fecha, valor:+valor, nota};
+    await dbPut('kpireg', reg); refreshUI();
+    const st = kStats(k, await regsOf(k.id));
+    return {ok:true, kpi:k.nombre, valor:+valor, unidad:k.unidad, meta:k.meta, cumple_meta:st.estado === 'ok', estado:st.estado || 'sin meta', anterior:st.anterior, reemplazo_mismo_dia:!!prev};
+  },
+  async consultar_kpis({kpi, desde, hasta} = {}){
+    const ks = kpi ? [await findKpi(kpi)].filter(Boolean) : await allKpi();
+    if (kpi && !ks.length) return {error:`No encontré el KPI "${kpi}"`, disponibles:(await allKpi()).map(x => x.nombre)};
+    const out = [];
+    for (const k of ks){
+      let regs = await regsOf(k.id); const st = kStats(k, regs);
+      if (validDate(desde)) regs = regs.filter(r => r.fecha >= desde); if (validDate(hasta)) regs = regs.filter(r => r.fecha <= hasta);
+      out.push({nombre:k.nombre, categoria:k.categoria, unidad:k.unidad, meta:k.meta, mejor_si:k.sentido === 'menor' ? 'baja' : 'sube', frecuencia:k.frecuencia, ultimo:st.ultimo, fecha_ultimo:st.fecha, anterior:st.anterior, promedio:st.promedio, minimo:st.min, maximo:st.max, porcentaje_periodos_en_meta:st.cumplimiento, estado:st.estado || 'sin meta', falta_registrar:st.pendiente, registros:regs.slice(-(kpi ? 60 : 12)).map(r => ({fecha:r.fecha, valor:r.valor, nota:r.nota || undefined}))});
+    }
+    return {hoy:hoy(), kpis:out};
+  },
+  async modificar_kpi(a){
+    const k = await findKpi(a.kpi); if (!k) return {error:`No encontré el KPI "${a.kpi}"`};
+    if (a.eliminar){ for (const r of await regsOf(k.id)) await dbDel('kpireg', r.id); await dbDel('kpis', k.id); if (curKpi === k.id) curKpi = null; refreshUI(); return {ok:true, eliminado:k.nombre}; }
+    if (a.borrar_registro_fecha){ const r = (await regsOf(k.id)).find(x => x.fecha === a.borrar_registro_fecha); if (r) await dbDel('kpireg', r.id); }
+    for (const f of ['nombre','unidad','categoria','descripcion']) if (a[f] !== undefined && a[f] !== '') k[f] = a[f];
+    if (a.meta !== undefined) k.meta = a.meta === '' || a.meta === null ? '' : +a.meta;
+    if (a.sentido) k.sentido = a.sentido === 'menor' ? 'menor' : 'mayor';
+    if (FREQ[a.frecuencia]) k.frecuencia = a.frecuencia;
+    await dbPut('kpis', k); refreshUI();
+    return {ok:true, kpi:k.nombre};
+  },
+  async navegar({vista, fecha, proyecto, creacion, kpi}){
+    const ok = await goView(vista, {fecha, proyecto, creacion, kpi});
     return ok ? {ok:true, vista} : {error:'Vista no encontrada'};
   },
   async listar_notas({limite = 10} = {}){
@@ -916,7 +976,11 @@ const tools = [
   {name:'listar_eventos', description:'Eventos del calendario entre dos fechas (por defecto los próximos 7 días).', input_schema:S({desde:{type:'string'}, hasta:{type:'string'}})},
   {name:'modificar_evento', description:'Cambia o elimina un evento del calendario.', input_schema:S({evento:{type:'string', description:'Título aproximado'}, fecha_actual:{type:'string'}, titulo:{type:'string'}, fecha:{type:'string'}, hora_inicio:{type:'string'}, hora_fin:{type:'string'}, lugar:{type:'string'}, notas:{type:'string'}, recordatorio_min:{type:'number'}, eliminar:{type:'boolean'}}, ['evento'])},
   {name:'descargar_creacion', description:'Descarga una creación al dispositivo en el formato pedido: pptx (presentaciones), xlsx (excel o tabla), word (documento), html o pdf (abre la impresión para guardar en PDF).', input_schema:S({creacion:{type:'string'}, formato:{type:'string', enum:['pptx','xlsx','word','html','pdf']}}, ['formato'])},
-  {name:'navegar', description:'Cambia lo que se ve en pantalla: inicio (cierra todo y vuelve a la conversación), agenda (calendario propio de la app; con fecha abre ese día), proyectos (con proyecto abre su ficha), creaciones, creacion (abre la indicada), notas, ajustes.', input_schema:S({vista:{type:'string', enum:['inicio','agenda','proyectos','creaciones','creacion','notas','ajustes']}, fecha:{type:'string'}, proyecto:{type:'string'}, creacion:{type:'string'}}, ['vista'])},
+  {name:'navegar', description:'Cambia lo que se ve en pantalla: inicio (cierra todo y vuelve a la conversación), agenda (calendario propio de la app; con fecha abre ese día), proyectos (con proyecto abre su ficha), kpis (panel de indicadores; con kpi abre su gráfico), creaciones, creacion (abre la indicada), notas, ajustes.', input_schema:S({vista:{type:'string', enum:['inicio','agenda','proyectos','kpis','creaciones','creacion','notas','ajustes']}, fecha:{type:'string'}, proyecto:{type:'string'}, creacion:{type:'string'}, kpi:{type:'string'}}, ['vista'])},
+  {name:'crear_kpi', description:'Crea un indicador (KPI) para seguimiento.', input_schema:S({nombre:{type:'string'}, unidad:{type:'string', description:'%, HH, eventos, $, horas, etc.'}, meta:{type:'number'}, sentido:{type:'string', enum:['mayor','menor'], description:'mayor: mejor si sube; menor: mejor si baja (ej. accidentes)'}, frecuencia:{type:'string', enum:Object.keys(FREQ)}, categoria:{type:'string'}, descripcion:{type:'string'}}, ['nombre'])},
+  {name:'registrar_kpi', description:'Registra un valor de un KPI (si no existe el KPI, créalo antes con crear_kpi). Un registro por fecha: si ya hay uno ese día, se reemplaza.', input_schema:S({kpi:{type:'string'}, valor:{type:'number'}, fecha:{type:'string', description:'AAAA-MM-DD; para valores mensuales usa el último día del mes que corresponde'}, nota:{type:'string'}}, ['kpi','valor'])},
+  {name:'consultar_kpis', description:'Estado de los KPIs: último valor, meta, promedio, tendencia, % de periodos en meta, si falta registrar e historial. Úsalo antes de analizar o hacer informes.', input_schema:S({kpi:{type:'string', description:'Omitir para todos'}, desde:{type:'string'}, hasta:{type:'string'}})},
+  {name:'modificar_kpi', description:'Cambia la definición de un KPI (meta, unidad, sentido, frecuencia, nombre, categoría), borra el registro de una fecha o elimina el KPI completo.', input_schema:S({kpi:{type:'string'}, nombre:{type:'string'}, unidad:{type:'string'}, meta:{type:'number'}, sentido:{type:'string', enum:['mayor','menor']}, frecuencia:{type:'string', enum:Object.keys(FREQ)}, categoria:{type:'string'}, borrar_registro_fecha:{type:'string'}, eliminar:{type:'boolean'}}, ['kpi'])},
   {name:'crear_nota', description:'Guarda una nota o recordatorio suelto, no asociado a un proyecto.', input_schema:S({texto:{type:'string'}, etiqueta:{type:'string'}}, ['texto'])},
   {name:'listar_notas', description:'Lee las notas más recientes.', input_schema:S({limite:{type:'number'}})}
 ];
@@ -924,7 +988,7 @@ const tools = [
 /* ---------- Vistas ---------- */
 let filtro = 'activo', curProj = null, openTask = null;
 const fechaCls = f => !f ? '' : f < hoy() ? 'late' : f === hoy() ? 'today' : '';
-function refreshUI(){ if ($('drawer').classList.contains('open')){ renderProyectos(); renderAgenda(); renderCrea(); renderNotas(); } }
+function refreshUI(){ if ($('drawer').classList.contains('open')){ renderProyectos(); renderAgenda(); renderKpis(); renderCrea(); renderNotas(); } }
 
 async function renderProyectos(){
   if (curProj) return renderDetalle();
@@ -1289,6 +1353,166 @@ function printHTML(html){
   f.onload = () => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch(_){} setTimeout(() => f.remove(), 60000); };
 }
 
+/* ---------- KPIs ---------- */
+async function allKpi(){ return (await dbAll('kpis')).sort((a,b) => (a.categoria || '').localeCompare(b.categoria || '') || a.nombre.localeCompare(b.nombre)); }
+async function regsOf(id){ return (await dbAll('kpireg')).filter(r => r.kpi === id).sort((a,b) => a.fecha.localeCompare(b.fecha) || (a._mod || 0) - (b._mod || 0)); }
+async function findKpi(q){
+  const all = await allKpi(), n = norm(q || ''); if (!n) return null;
+  return all.find(k => k.id === q) || all.find(k => norm(k.nombre) === n) || all.find(k => norm(k.nombre).includes(n) || n.includes(norm(k.nombre)))
+    || all.find(k => n.split(' ').filter(w => w.length > 3).some(w => norm(k.nombre).includes(w)));
+}
+const fmtK = (v, u) => { if (v === null || v === undefined || !isFinite(v)) return '–'; const s = (+v).toLocaleString('es-CL', {maximumFractionDigits:2}); return u === '$' ? '$' + Math.round(v).toLocaleString('es-CL') : s; };
+const unitTxt = u => !u || u === '$' ? '' : u;
+// Estado frente a la meta: verde si cumple, ámbar si está a menos de 10% de cumplir, rojo si no
+function kStatus(k, v){
+  if (v === null || v === undefined || k.meta === '' || k.meta === null || k.meta === undefined || !isFinite(+k.meta)) return '';
+  const m = +k.meta, menor = k.sentido === 'menor';
+  if (menor ? v <= m : v >= m) return 'ok';
+  const gap = Math.abs(v - m) / (Math.abs(m) || 1);
+  return gap <= 0.1 ? 'warn' : 'bad';
+}
+function kStats(k, regs){
+  const vals = regs.map(r => +r.valor), last = regs[regs.length - 1], prev = regs[regs.length - 2];
+  const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  const cumple = vals.length && isFinite(+k.meta) && k.meta !== '' ? vals.filter(v => k.sentido === 'menor' ? v <= +k.meta : v >= +k.meta).length / vals.length : null;
+  const dias = last ? Math.round((new Date(hoy() + 'T12:00') - new Date(last.fecha + 'T12:00')) / 864e5) : null;
+  const pendiente = !last || (FREQ[k.frecuencia] && dias >= FREQ[k.frecuencia]);
+  const delta = last && prev ? +last.valor - +prev.valor : null;
+  const mejora = delta === null || delta === 0 ? 0 : (k.sentido === 'menor' ? -delta : delta) > 0 ? 1 : -1;
+  return {ultimo:last ? +last.valor : null, fecha:last ? last.fecha : '', anterior:prev ? +prev.valor : null, delta, mejora, promedio:avg, min:vals.length ? Math.min(...vals) : null, max:vals.length ? Math.max(...vals) : null, n:vals.length, cumplimiento:cumple, estado:kStatus(k, last ? +last.valor : null), pendiente};
+}
+function spark(vals, meta){
+  if (vals.length < 2) return '<svg viewBox="0 0 100 36"></svg>';
+  const all = [...vals, ...(isFinite(meta) ? [meta] : [])], mn = Math.min(...all), mx = Math.max(...all), sp = mx - mn || 1;
+  const Y = v => 32 - (v - mn) / sp * 28, X = i => i / (vals.length - 1) * 100;
+  return `<svg viewBox="0 0 100 36" preserveAspectRatio="none">${isFinite(meta) ? `<line x1="0" x2="100" y1="${Y(meta)}" y2="${Y(meta)}" stroke="#8aa4bf" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>` : ''}<polyline fill="none" stroke="#46dcff" stroke-width="2" vector-effect="non-scaling-stroke" points="${vals.map((v, i) => X(i).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ')}"/></svg>`;
+}
+let curKpi = null, kRange = 90, kRO = null, kDelArm = false;
+const K_SUGERIDOS = [
+  {nombre:'Incidentes con tiempo perdido', unidad:'eventos', meta:0, sentido:'menor', frecuencia:'mensual', categoria:'Seguridad'},
+  {nombre:'Reportes de seguridad', unidad:'reportes', meta:20, sentido:'mayor', frecuencia:'mensual', categoria:'Seguridad'},
+  {nombre:'Cumplimiento programa de mantención', unidad:'%', meta:95, sentido:'mayor', frecuencia:'semanal', categoria:'Operaciones'},
+  {nombre:'Disponibilidad de correas', unidad:'%', meta:98, sentido:'mayor', frecuencia:'semanal', categoria:'Operaciones'},
+  {nombre:'Horas hombre trabajadas', unidad:'HH', meta:'', sentido:'mayor', frecuencia:'mensual', categoria:'Personal'},
+  {nombre:'Ausentismo', unidad:'%', meta:3, sentido:'menor', frecuencia:'mensual', categoria:'Personal'}
+];
+async function renderKpis(){
+  if (curKpi) return renderKpiDetail();
+  const ks = await allKpi(), regsAll = await dbAll('kpireg');
+  if (!ks.length){
+    $('pKpi').innerHTML = `<h2>KPIs</h2><p class="small">Aún no tienes indicadores. Créalos por voz («KAI, crea un KPI de cumplimiento del programa de mantención con meta 95%») o parte con un set sugerido para operaciones y seguridad (solo definiciones, sin datos).</p>
+      <div class="row"><button class="btn p" data-k="sug">Agregar KPIs sugeridos</button><button class="btn" data-k="new">Crear uno</button></div>${kpiForm()}`;
+    return;
+  }
+  let lastCat = null, html = '';
+  for (const k of ks){
+    const regs = regsAll.filter(r => r.kpi === k.id).sort((a,b) => a.fecha.localeCompare(b.fecha)), st = kStats(k, regs);
+    if ((k.categoria || 'General') !== lastCat){ if (lastCat !== null) html += '</div>'; lastCat = k.categoria || 'General'; html += `<div class="kcat">${esc(lastCat)}</div><div class="kgrid">`; }
+    const arrow = st.delta === null ? '' : st.mejora > 0 ? '<span class="up">▲</span>' : st.mejora < 0 ? '<span class="down">▼</span>' : '<span class="flat">■</span>';
+    html += `<button class="kcard ${st.estado}" data-kpi="${esc(k.id)}"><div class="kn"><span>${esc(k.nombre)}</span>${st.pendiente ? '<span style="color:var(--warn)" title="Toca registrar">●</span>' : ''}</div>
+      <div class="kv">${esc(fmtK(st.ultimo, k.unidad))}<small>${esc(unitTxt(k.unidad))}</small> ${arrow}</div>
+      ${spark(regs.slice(-12).map(r => +r.valor), +k.meta)}
+      <div class="kmeta"><span>${k.meta !== '' && k.meta !== undefined ? 'Meta ' + (k.sentido === 'menor' ? '≤ ' : '≥ ') + esc(fmtK(+k.meta, k.unidad)) + ' ' + esc(unitTxt(k.unidad)) : 'Sin meta'}</span><span>${st.fecha ? esc(fmtD(st.fecha)) : 'sin datos'}</span></div></button>`;
+  }
+  html += '</div>';
+  $('pKpi').innerHTML = `<h2>KPIs</h2>${html}<div class="row" style="margin-top:16px"><button class="btn" data-k="new">Nuevo KPI</button><button class="btn" data-k="xlsx">Exportar a Excel</button><button class="btn" data-k="report">Pedir informe a KAI</button></div>${kpiForm()}
+    <p class="note">● naranjo: toca registrar según su frecuencia. Verde cumple la meta, ámbar está cerca, rojo no cumple.</p>`;
+}
+function kpiForm(k = {}){
+  return `<div class="card" id="kForm" ${k.id ? '' : 'hidden'} style="margin-top:12px">
+    <input class="f sm" id="kNom" placeholder="Nombre del KPI" value="${esc(k.nombre || '')}">
+    <div class="grid2"><div><label>Unidad</label><input class="f sm" id="kUni" placeholder="%, HH, eventos, $" value="${esc(k.unidad || '')}"></div>
+    <div><label>Meta</label><input class="f sm" id="kMeta" inputmode="decimal" value="${esc(k.meta ?? '')}"></div>
+    <div><label>Mejor si</label><select class="f sm" id="kSen"><option value="mayor" ${k.sentido !== 'menor' ? 'selected' : ''}>sube (≥ meta)</option><option value="menor" ${k.sentido === 'menor' ? 'selected' : ''}>baja (≤ meta)</option></select></div>
+    <div><label>Frecuencia</label><select class="f sm" id="kFre">${Object.keys(FREQ).map(f => `<option ${(k.frecuencia || 'mensual') === f ? 'selected' : ''}>${f}</option>`).join('')}</select></div></div>
+    <label>Categoría</label><input class="f sm" id="kCat" placeholder="Seguridad, Operaciones, Personal…" value="${esc(k.categoria || '')}">
+    <div class="row"><button class="btn p sm" data-k="save">${k.id ? 'Guardar cambios' : 'Crear KPI'}</button></div></div>`;
+}
+async function renderKpiDetail(){
+  const k = (await allKpi()).find(x => x.id === curKpi); if (!k){ curKpi = null; return renderKpis(); }
+  const regs = await regsOf(k.id), st = kStats(k, regs);
+  const desde = kRange ? addDays(hoy(), -kRange) : '0000', vis = regs.filter(r => r.fecha >= desde);
+  $('pKpi').innerHTML = `<button class="back" data-k="back">‹ KPIs</button>
+    <h2 style="margin:4px 0">${esc(k.nombre)}</h2>
+    <div class="meta"><span>${esc(k.categoria || 'General')}</span><span>${esc(k.frecuencia || '')}</span><span>${k.meta !== '' && k.meta !== undefined ? 'Meta ' + (k.sentido === 'menor' ? '≤ ' : '≥ ') + esc(fmtK(+k.meta, k.unidad)) + ' ' + esc(unitTxt(k.unidad)) : 'Sin meta'}</span></div>
+    <div class="kstat"><div><b class="${st.estado === 'ok' ? 'up' : st.estado === 'bad' ? 'down' : ''}">${esc(fmtK(st.ultimo, k.unidad))}</b><span>Último ${st.fecha ? esc(fmtD(st.fecha)) : ''}</span></div>
+      <div><b>${esc(fmtK(st.promedio, k.unidad))}</b><span>Promedio</span></div>
+      <div><b>${st.cumplimiento === null ? '—' : Math.round(st.cumplimiento * 100) + '%'}</b><span>Periodos en meta</span></div></div>
+    <div class="chips">${[[30,'30 días'],[90,'90 días'],[365,'12 meses'],[0,'Todo']].map(([d, l]) => `<button class="chip ${kRange === d ? 'on' : ''}" data-k="range" data-d="${d}">${l}</button>`).join('')}</div>
+    <div class="kchart" id="kChart"><svg></svg></div>
+    <h3>Registrar valor</h3>
+    <div class="grid2"><div><input class="f sm" id="rVal" inputmode="decimal" placeholder="Valor ${esc(unitTxt(k.unidad))}"></div><div><input class="f sm" type="date" id="rFecha" value="${hoy()}"></div></div>
+    <input class="f sm" id="rNota" placeholder="Comentario (opcional)" style="margin-top:8px">
+    <div class="row"><button class="btn p sm" data-k="reg">Registrar</button></div>
+    <h3>Historial (${regs.length})</h3>
+    ${regs.slice().reverse().slice(0, 60).map(r => `<div class="ev"><div class="hr">${esc(fmtD(r.fecha))}</div><div class="b"><strong style="font-weight:600" class="${kStatus(k, +r.valor) === 'ok' ? 'up' : kStatus(k, +r.valor) === 'bad' ? 'down' : ''}">${esc(fmtK(+r.valor, k.unidad))} ${esc(unitTxt(k.unidad))}</strong>${r.nota ? `<div class="small">${esc(r.nota)}</div>` : ''}</div><button class="x" data-delr="${esc(r.id)}" aria-label="Eliminar registro">✕</button></div>`).join('') || '<p class="small">Sin registros todavía.</p>'}
+    <div class="row" style="margin-top:18px"><button class="btn sm" data-k="edit">Editar KPI</button><button class="btn sm" data-k="xlsx1">Exportar a Excel</button><button class="btn sm danger" data-k="del">Eliminar KPI</button></div>
+    ${kpiForm(k)}`;
+  $('kForm').hidden = true;
+  drawKChart(k, vis);
+}
+function drawKChart(k, regs){
+  const box = $('kChart'); if (!box) return;
+  const draw = () => {
+    const s = box.querySelector('svg'), W = box.clientWidth, H = box.clientHeight; if (!W) return;
+    if (!regs.length){ s.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#8aa4bf" font-size="14">Sin datos en este periodo</text>`; return; }
+    const vals = regs.map(r => +r.valor), meta = +k.meta, hasM = k.meta !== '' && k.meta !== undefined && isFinite(meta);
+    let mn = Math.min(...vals, ...(hasM ? [meta] : [])), mx = Math.max(...vals, ...(hasM ? [meta] : []));
+    if (mn === mx){ mn -= 1; mx += 1; } const pad = (mx - mn) * 0.12; mn -= pad; mx += pad; if (Math.min(...vals) >= 0 && mn < 0) mn = 0;
+    const L = 44, R = 12, T = 12, B = 26, t0 = +new Date(regs[0].fecha + 'T12:00'), t1 = +new Date(regs[regs.length - 1].fecha + 'T12:00'), span = t1 - t0 || 1;
+    const X = r => regs.length === 1 ? (L + W - R) / 2 : L + (+new Date(r.fecha + 'T12:00') - t0) / span * (W - L - R), Y = v => T + (1 - (v - mn) / (mx - mn)) * (H - T - B);
+    const ticks = 4, grid = Array.from({length:ticks + 1}, (_, i) => mn + (mx - mn) * i / ticks);
+    const col = v => { const st = kStatus(k, v); return st === 'ok' ? '#4ade80' : st === 'bad' ? '#ff6b6b' : st === 'warn' ? '#ffb347' : '#46dcff'; };
+    const nl = W < 420 ? 3 : 6, lbls = regs.length <= nl ? regs : Array.from({length:nl}, (_, i) => regs[Math.round(i * (regs.length - 1) / (nl - 1))]);
+    s.innerHTML = grid.map(g => `<line x1="${L}" x2="${W - R}" y1="${Y(g)}" y2="${Y(g)}" stroke="#1d3350"/><text x="${L - 6}" y="${Y(g) + 4}" text-anchor="end" fill="#8aa4bf" font-size="11">${esc(fmtK(g, k.unidad === '%' ? '' : k.unidad).replace(/,\d+$/, ''))}</text>`).join('')
+      + (hasM ? `<line x1="${L}" x2="${W - R}" y1="${Y(meta)}" y2="${Y(meta)}" stroke="#ffb347" stroke-dasharray="6 4" stroke-width="1.5"/><text x="${W - R}" y="${Y(meta) - 5}" text-anchor="end" fill="#ffb347" font-size="11">Meta ${esc(fmtK(meta, k.unidad))}</text>` : '')
+      + `<polyline fill="none" stroke="#46dcff" stroke-width="2.5" stroke-linejoin="round" points="${regs.map(r => X(r).toFixed(1) + ',' + Y(+r.valor).toFixed(1)).join(' ')}"/>`
+      + regs.map(r => `<circle cx="${X(r)}" cy="${Y(+r.valor)}" r="${regs.length > 40 ? 2.5 : 4}" fill="${col(+r.valor)}" stroke="#070e18" stroke-width="1.5"><title>${esc(fmtD(r.fecha))}: ${esc(fmtK(+r.valor, k.unidad))} ${esc(unitTxt(k.unidad))}</title></circle>`).join('')
+      + lbls.map((r, i) => `<text x="${X(r)}" y="${H - 6}" text-anchor="${lbls.length > 1 && i === 0 ? 'start' : lbls.length > 1 && i === lbls.length - 1 ? 'end' : 'middle'}" fill="#8aa4bf" font-size="11">${esc(fmtD(r.fecha))}</text>`).join('');
+  };
+  if (kRO) kRO.disconnect(); kRO = new ResizeObserver(draw); kRO.observe(box); draw();
+}
+async function kpisToExcel(only){
+  const ks = (await allKpi()).filter(k => !only || k.id === only), regsAll = await dbAll('kpireg');
+  const resumen = {nombre:'Resumen', columnas:[{titulo:'KPI', formato:'texto', ancho:36}, {titulo:'Categoría', formato:'texto'}, {titulo:'Unidad', formato:'texto'}, {titulo:'Meta', formato:'decimal'}, {titulo:'Mejor si', formato:'texto'}, {titulo:'Último valor', formato:'decimal'}, {titulo:'Fecha', formato:'fecha'}, {titulo:'Promedio', formato:'decimal'}, {titulo:'% periodos en meta', formato:'porcentaje'}], filas:[]};
+  const hojas = [resumen];
+  for (const k of ks){
+    const regs = regsAll.filter(r => r.kpi === k.id).sort((a,b) => a.fecha.localeCompare(b.fecha)), st = kStats(k, regs);
+    resumen.filas.push([k.nombre, k.categoria || '', k.unidad || '', k.meta === '' ? '' : +k.meta, k.sentido === 'menor' ? 'baja' : 'sube', st.ultimo ?? '', st.fecha, st.promedio === null ? '' : Math.round(st.promedio * 100) / 100, st.cumplimiento ?? '']);
+    hojas.push({nombre:k.nombre.slice(0, 31), columnas:[{titulo:'Fecha', formato:'fecha'}, {titulo:'Valor (' + (k.unidad || '') + ')', formato:'decimal'}, {titulo:'Meta', formato:'decimal'}, {titulo:'¿Cumple?', formato:'texto'}, {titulo:'Comentario', formato:'texto', ancho:40}],
+      filas:regs.map((r, i) => [r.fecha, +r.valor, k.meta === '' ? '' : +k.meta, k.meta === '' ? '' : `=IF(${k.sentido === 'menor' ? `B${i + 2}<=C${i + 2}` : `B${i + 2}>=C${i + 2}`},"Sí","No")`, r.nota || ''])});
+  }
+  download(safeName(only && ks[0] ? 'KPI ' + ks[0].nombre : 'KPIs ' + hoy()) + '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', await buildXLSX({hojas}, 'KPIs'));
+}
+$('pKpi').addEventListener('click', async e => {
+  const el = e.target.closest('[data-kpi],[data-k],[data-delr]'); if (!el) return;
+  if (el.dataset.kpi){ curKpi = el.dataset.kpi; kDelArm = false; $('pKpi').scrollTop = 0; return renderKpiDetail(); }
+  if (el.dataset.delr){ await dbDel('kpireg', el.dataset.delr); return renderKpiDetail(); }
+  const a = el.dataset.k;
+  if (a === 'back'){ curKpi = null; return renderKpis(); }
+  if (a === 'sug'){ for (const s of K_SUGERIDOS) await actions.crear_kpi(s); return; }
+  if (a === 'new' || a === 'edit'){ $('kForm').hidden = !$('kForm').hidden; $('kForm').scrollIntoView({block:'nearest'}); return; }
+  if (a === 'save'){
+    const d = {nombre:$('kNom').value.trim(), unidad:$('kUni').value.trim(), meta:$('kMeta').value.trim().replace(',', '.'), sentido:$('kSen').value, frecuencia:$('kFre').value, categoria:$('kCat').value.trim()};
+    if (!d.nombre) return;
+    if (curKpi) await actions.modificar_kpi({kpi:curKpi, ...d, meta:d.meta === '' ? '' : +d.meta}); else await actions.crear_kpi({...d, meta:d.meta === '' ? '' : +d.meta});
+    return;
+  }
+  if (a === 'range'){ kRange = +el.dataset.d; return renderKpiDetail(); }
+  if (a === 'reg'){
+    const v = $('rVal').value.trim().replace(',', '.'); if (!isNum(v)) return;
+    await actions.registrar_kpi({kpi:curKpi, valor:+v, fecha:$('rFecha').value, nota:$('rNota').value.trim()}); return;
+  }
+  if (a === 'xlsx') return kpisToExcel();
+  if (a === 'xlsx1') return kpisToExcel(curKpi);
+  if (a === 'report'){ $('drawer').classList.remove('open'); return handle('Analiza todos mis KPIs y crea un informe ejecutivo en PowerPoint con el estado de cada uno frente a su meta, tendencias, alertas y acciones recomendadas.'); }
+  if (a === 'del'){
+    if (!kDelArm){ kDelArm = true; el.textContent = 'Toca de nuevo para eliminar'; setTimeout(() => { kDelArm = false; el.textContent = 'Eliminar KPI'; }, 3000); return; }
+    for (const r of await regsOf(curKpi)) await dbDel('kpireg', r.id);
+    await dbDel('kpis', curKpi); curKpi = null; return renderKpis();
+  }
+});
+
 async function renderNotas(){
   const all = (await dbAll('notas')).sort((a,b) => b.fecha.localeCompare(a.fecha));
   $('notaList').innerHTML = all.length ? all.map(n => `
@@ -1325,6 +1549,7 @@ Cómo responder:
 - Proyectos: para "arma un plan" crea el proyecto con 6 a 15 tareas con fechas y prioridad. Agenda: reuniones y citas con hora van al calendario con crear_evento; trabajos con plazo son tareas de un proyecto.
 - La app ya tiene su propia agenda-calendario, proyectos, creaciones y notas: para mostrarlos usa navegar. Nunca construyas un calendario o agenda como creación salvo que pidan expresamente una app aparte. Para volver a la pantalla principal usa navegar con vista inicio.
 - Si el usuario adjunta fotos o archivos, analízalos con atención: describe lo relevante (en terreno: estado de equipos, daños, riesgos, condiciones inseguras), extrae datos, resume o úsalos para crear lo que pida (por ejemplo, convertir un PDF en procedimiento o una foto en informe de hallazgo).
+- KPIs: cuando el usuario diga un valor de un indicador («cumplimiento del programa esta semana 92», «este mes tuvimos 1 incidente»), regístralo con registrar_kpi (créalo antes si no existe, con unidad, meta y sentido razonables) y dile si cumple la meta y cómo va frente al valor anterior. Para análisis o informes usa consultar_kpis primero; para informes crea una presentacion o un excel con los datos reales, sin inventar cifras.
 - Usa las herramientas sin pedir permiso. Si no encuentras algo, lista antes de rendirte. Para "qué tengo hoy" usa resumen_pendientes.
 - Si necesitas información actual (noticias, precios, normativa vigente, datos recientes) y tienes búsqueda web, úsala.
 ${openCreaHint()}${cfg.about ? '\nContexto del usuario: ' + cfg.about : ''}`;
@@ -1539,13 +1764,14 @@ document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.bod
 document.addEventListener('drop', e => { document.body.classList.remove('drop'); const fs = [...(e.dataTransfer?.files || [])]; if (fs.length){ e.preventDefault(); addFiles(fs); } });
 
 /* ================= Navegación ================= */
-const VISTAS = {proyectos:'pProy', agenda:'pAgenda', calendario:'pAgenda', creaciones:'pCrea', documentos:'pCrea', notas:'pNotas', ajustes:'pAj', configuracion:'pAj'};
+const VISTAS = {kpis:'pKpi', kpi:'pKpi', indicadores:'pKpi', proyectos:'pProy', agenda:'pAgenda', calendario:'pAgenda', creaciones:'pCrea', documentos:'pCrea', notas:'pNotas', ajustes:'pAj', configuracion:'pAj'};
 async function goView(v, extra = {}){
   v = norm(v || 'inicio');
   if (v === 'inicio' || v === 'principal' || v === 'conversacion'){ closeViewer(); $('drawer').classList.remove('open'); return true; }
   if (v === 'creacion' && extra.creacion){ const c = await findCrea(extra.creacion); if (c){ openViewer(c.id); return true; } return false; }
   const pane = VISTAS[v]; if (!pane) return false;
   if (pane === 'pAgenda' && validDate(extra.fecha)){ calSel = extra.fecha; calMonth = calSel.slice(0,7); }
+  if (pane === 'pKpi'){ curKpi = null; if (extra.kpi){ const k = await findKpi(extra.kpi); if (k) curKpi = k.id; } }
   if (pane === 'pProy' && extra.proyecto){ const p = await findProject(extra.proyecto); if (p){ curProj = p.id; openTask = null; } }
   closeViewer(); $('drawer').classList.add('open'); showTab(pane); refreshUI();
   return true;
@@ -1553,7 +1779,7 @@ async function goView(v, extra = {}){
 // Órdenes cortas de navegación se resuelven al instante, sin consultar a Claude
 async function quickNav(text){
   const n = norm(text); if (n.split(' ').length > 7) return false;
-  let m = n.match(/^(?:abre|abrir|ve a|vamos a|anda a|ir a|muestrame|muestra|mostrar|ensename|ver)\s+(?:la |las |los |el |mis |mi )?(agenda|calendario|proyectos|creaciones|documentos|notas|ajustes|configuracion)\b/);
+  let m = n.match(/^(?:abre|abrir|ve a|vamos a|anda a|ir a|muestrame|muestra|mostrar|ensename|ver)\s+(?:la |las |los |el |mis |mi )?(agenda|calendario|proyectos|kpis|kpi|indicadores|creaciones|documentos|notas|ajustes|configuracion)\b/);
   if (m){ await goView(m[1]); const t = 'Listo.'; addMsg('u', text); addMsg('a', t); followUp = cfg.followUp === 'siempre'; await speak(t); return true; }
   if (/^(vuelve|volver|regresa|regresar|cierra|cerrar|atras|inicio|pantalla principal|ve al inicio|vuelve al inicio|vuelve a la pantalla principal|cierra eso|cierra la creacion)$/.test(n)){
     await goView('inicio'); const t = 'Listo.'; addMsg('u', text); addMsg('a', t); followUp = cfg.followUp === 'siempre'; await speak(t); return true;
@@ -1943,9 +2169,10 @@ async function checkFiles(){
   if (await kvGet('lastBrief', '') !== hoy()){
     const r = await pendientes(7);
     const evH = (await allEv()).filter(e => e.fecha === hoy());
-    if (r.vencidas.length || r.hoy.length || evH.length){
+    const kPend = []; for (const k of await allKpi()) if (kStats(k, await regsOf(k.id)).pendiente) kPend.push(k.nombre);
+    if (r.vencidas.length || r.hoy.length || evH.length || kPend.length){
       const f = a => a.slice(0,5).map(x => `• ${x.tarea} (${x.proyecto})`).join('\n');
-      addMsg('a', ['**Resumen de hoy**', evH.length ? `Agenda:\n${evH.map(e => `• ${e.hora_inicio || 'Todo el día'} ${e.titulo}`).join('\n')}` : '', r.vencidas.length ? `Vencidas:\n${f(r.vencidas)}` : '', r.hoy.length ? `Para hoy:\n${f(r.hoy)}` : '', r.proximas.length ? `Esta semana: ${r.proximas.length} tareas más.` : ''].filter(Boolean).join('\n\n'));
+      addMsg('a', ['**Resumen de hoy**', evH.length ? `Agenda:\n${evH.map(e => `• ${e.hora_inicio || 'Todo el día'} ${e.titulo}`).join('\n')}` : '', r.vencidas.length ? `Vencidas:\n${f(r.vencidas)}` : '', r.hoy.length ? `Para hoy:\n${f(r.hoy)}` : '', r.proximas.length ? `Esta semana: ${r.proximas.length} tareas más.` : '', kPend.length ? `KPIs por registrar: ${kPend.slice(0,6).join(', ')}.` : ''].filter(Boolean).join('\n\n'));
     }
     kvSet('lastBrief', hoy());
   }
