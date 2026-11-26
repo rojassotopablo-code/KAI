@@ -56,6 +56,11 @@ Para actualizar KAI en el futuro: subes el `index.html` nuevo al mismo repositor
 - No compartas el enlace con la key ya cargada en un equipo ajeno. Si alguna vez se filtra, bórrala en la consola y crea otra.
 - Modelo recomendado para uso diario: **Haiku 5.5** (más rápido y barato). Sonnet 5.5 para tareas más complejas.
 
+## Cambios v3.2
+- Corregido: KAI podía quedarse "escuchando" sin ejecutar nada cuando el navegador no avisaba que había terminado de hablar. Ahora se libera solo.
+- Con una creación abierta, abajo se ve lo que KAI escucha, lo que está haciendo (con segundos transcurridos) y cualquier error.
+- Los cambios puntuales en documentos son mucho más rápidos: KAI edita solo la parte que cambia en vez de reescribir todo.
+
 ## Cambios v3.1
 - La conversación avanza sola: queda fija en pantalla y siempre muestra lo último, sin tener que desplazarse.
 - El orbe se achica cuando hay diálogo, para dejar más espacio a la conversación.
